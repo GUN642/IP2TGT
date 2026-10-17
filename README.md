@@ -6,7 +6,9 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 
 ## Funktionen
 
-- **TGT/LZ und IP** per **MGRS** oder **Lat/Lon** eingeben – oder mit ⌖ direkt auf der Karte anklicken.
+- **TGT/LZ und IP** per **MGRS** oder **Lat/Lon** eingeben, auf einer **Karte auswählen** oder die **aktuelle Position (GPS)** übernehmen.
+  - Kartenauswahl (🗺): Luftbild, topografische Karte oder OpenStreetMap; Klick setzt TGT bzw. IP, Marker sind verschiebbar, Kurs/Distanz IP→TGT und MGRS unter dem Cursor werden live angezeigt; Ortssuche oder Koordinateneingabe im Suchfeld; „Meine Position“ setzt den Gerätestandort.
+  - GPS-Knopf (◎) neben den Feldern übernimmt den aktuellen Standort direkt (Browser-Freigabe nötig, nur über HTTPS – auf GitHub Pages gegeben).
   - MGRS: `32U NB 20005 62607`, `32UNB2000562607`, auch kurz `NB 2000 6260` (Zone wird vom TGT übernommen)
   - Lat/Lon: `51.1146, 9.2858` · `51,1146 9,2858` · `N51 06.876 E009 17.148` · `51°06'52.6"N 9°17'08.9"E` · `N5106.88 E00917.15` (auch `O` für Ost)
 - **Ohne IP:** Final Course (MAG oder TRUE) und Entfernung (NM oder km) eingeben – der IP wird berechnet.
@@ -67,6 +69,7 @@ js/geo.js           MGRS/Lat-Lon-Parser, Vincenty-Geodäsie, WMM2025-Missweisung
 js/flight.js        Höhenprofil (Geländefolge), Trajektorie (Verzögerung, Hover, Aufsetzen)
 js/terrain.js       Cesium-TerrainProvider für AWS Terrarium-Kacheln + Höhen-Sampler
 js/buildings.js     OSM-Gebäude via Overpass (Extrusion, Hindernishöhen)
+js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position
 js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F (GLB im Speicher)
 js/hud.js           HUD-Symbologie
 js/cockpit.js       Cockpit-Rahmen (SVG)
@@ -75,7 +78,7 @@ js/vendor/mgrs.esm.js   proj4js/mgrs (MIT)
 js/wmm2025.js       WMM2025-Koeffizienten (NOAA/BGS, gemeinfrei)
 ```
 
-3D-Engine: [CesiumJS](https://cesium.com/platform/cesiumjs/) 1.146 (Apache 2.0) per CDN.
+3D-Engine: [CesiumJS](https://cesium.com/platform/cesiumjs/) 1.146 (Apache 2.0), 2D-Karte: [Leaflet](https://leafletjs.com/) 1.9.4 (BSD-2) – beide per CDN.
 
 ## Hinweis
 

@@ -704,15 +704,6 @@ body.sim #panel:not(.closed) ~ #controls {
   width: min(1180px, calc(100vw - 448px));
 }
 
-#hint {
-  position: fixed;
-  z-index: 11;
-  top: 70px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 10px 16px;
-  font-weight: 600;
-}
 #toast {
   position: fixed;
   z-index: 30;
@@ -797,12 +788,154 @@ dialog menu {
   font-size: 12px;
 }
 
-body.picking #cesium {
+/* ---------- Kartenauswahl ---------- */
+.coord-input .icon-btn {
+  padding: 0;
+  width: 40px;
+  display: grid;
+  place-items: center;
+}
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+dialog.map-dlg {
+  padding: 0;
+  width: min(1180px, calc(100vw - 24px));
+  height: min(820px, calc(100dvh - 24px));
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+dialog.map-dlg[open] {
+  display: flex;
+  flex-direction: column;
+}
+.map-head,
+.map-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+.map-head {
+  border-bottom: 1px solid var(--line);
+}
+.map-foot {
+  border-top: 1px solid var(--line);
+  justify-content: space-between;
+}
+.map-head .seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-head .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-search {
+  flex: 1;
+  min-width: 180px;
+}
+.map-search input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font:
+    500 14px Inter,
+    system-ui,
+    sans-serif;
+  outline: none;
+}
+.map-search input:focus {
+  border-color: var(--accent);
+}
+#map {
+  flex: 1;
+  min-height: 200px;
+  background: #1b2229;
   cursor: crosshair;
+}
+#map .leaflet-control-layers,
+#map .leaflet-bar a {
+  background: var(--glass-strong);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+#map .leaflet-control-layers {
+  border-radius: 10px;
+  padding: 2px 4px;
+}
+#map .leaflet-control-attribution {
+  background: rgba(10, 14, 18, 0.7);
+  color: var(--muted);
+}
+#map .leaflet-control-attribution a {
+  color: var(--muted);
+}
+.map-read {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  align-items: center;
+  font:
+    600 13px "JetBrains Mono",
+    monospace;
+}
+.map-read > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+#mapMsg.err {
+  color: var(--danger);
+}
+.map-actions {
+  display: flex;
+  gap: 8px;
+}
+.map-pin .pin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.map-pin .pin span {
+  transform: rotate(45deg);
+  font:
+    800 11px "JetBrains Mono",
+    monospace;
+  color: #111;
+}
+.map-pin.tgt .pin {
+  background: var(--tgt);
+}
+.map-pin.ip .pin {
+  background: var(--ip);
+}
+.map-pin.derived {
+  opacity: 0.6;
 }
 
 /* ---------- Mobil ---------- */
 @media (max-width: 860px) {
+  .map-head .lbl {
+    display: none;
+  }
+  .map-search {
+    order: 5;
+    flex-basis: 100%;
+  }
   #panel {
     width: auto;
     right: 12px;

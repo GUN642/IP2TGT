@@ -62,7 +62,35 @@
               autocomplete="off"
               placeholder="z. B. 32U MA 77269 51009 oder N50 06.654 E008 40.926"
             />
-            <button class="icon-btn pick" data-pick="tgt" title="Auf Karte wählen">⌖</button>
+            <button class="icon-btn pick" data-pick="tgt" title="Auf Karte wählen">
+              <svg
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+              >
+                <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" />
+                <path d="M9 4v14M15 6v14" />
+              </svg>
+            </button>
+            <button class="icon-btn gps" data-gps="tgt" title="Aktuelle Position übernehmen (GPS)">
+              <svg
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              >
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" fill="currentColor" />
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+              </svg>
+            </button>
           </div>
           <div class="coord-meta" id="tgtMeta"></div>
         </section>
@@ -82,7 +110,35 @@
                 autocomplete="off"
                 placeholder="IP: MGRS oder Lat/Lon (kurz: MA 712 489)"
               />
-              <button class="icon-btn pick" data-pick="ip" title="Auf Karte wählen">⌖</button>
+              <button class="icon-btn pick" data-pick="ip" title="Auf Karte wählen">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="19"
+                  height="19"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                >
+                  <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" />
+                  <path d="M9 4v14M15 6v14" />
+                </svg>
+              </button>
+              <button class="icon-btn gps" data-gps="ip" title="Aktuelle Position übernehmen (GPS)">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="19"
+                  height="19"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <circle cx="12" cy="12" r="6" />
+                  <circle cx="12" cy="12" r="2" fill="currentColor" />
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                </svg>
+              </button>
             </div>
             <div class="coord-meta" id="ipMeta"></div>
           </div>
@@ -258,7 +314,6 @@
       </div>
     </div>
 
-    <div id="hint" class="glass" hidden></div>
     <div id="toast" hidden></div>
 
     <div id="loading" hidden>
@@ -303,6 +358,55 @@
           <button id="keysSave" value="save" class="btn primary">Speichern &amp; neu laden</button>
         </menu>
       </form>
+    </dialog>
+
+    <dialog id="mapDlg" class="glass map-dlg">
+      <div class="map-head">
+        <div class="seg" id="mapActive">
+          <button data-v="tgt" class="on"><span class="dot tgt"></span> TGT setzen</button>
+          <button data-v="ip"><span class="dot ip"></span> IP setzen</button>
+        </div>
+        <form id="mapSearch" class="map-search">
+          <input
+            id="mapSearchInput"
+            type="search"
+            autocomplete="off"
+            placeholder="Ort suchen oder Koordinate eingeben …"
+          />
+        </form>
+        <button id="mapGps" class="icon-btn" title="Aktuelle Position übernehmen (GPS)">
+          <svg
+            viewBox="0 0 24 24"
+            width="19"
+            height="19"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <circle cx="12" cy="12" r="6" />
+            <circle cx="12" cy="12" r="2" fill="currentColor" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          </svg>
+          <span class="lbl">Meine Position</span>
+        </button>
+        <button id="mapClose" class="icon-btn" title="Schließen">✕</button>
+      </div>
+      <div id="map"></div>
+      <div class="map-foot">
+        <div class="map-read">
+          <div><span class="dot tgt"></span><b id="mapTgt">—</b></div>
+          <div><span class="dot ip"></span><b id="mapIp">—</b></div>
+          <div id="mapLeg"></div>
+          <div class="muted small" id="mapHint"></div>
+          <div class="muted small" id="mapCursor"></div>
+          <div class="small" id="mapMsg"></div>
+        </div>
+        <div class="map-actions">
+          <button id="mapCancel" class="btn ghost">Abbrechen</button>
+          <button id="mapApply" class="btn primary">Übernehmen</button>
+        </div>
+      </div>
     </dialog>
 
     <script type="module" src="js/app.js"></script>

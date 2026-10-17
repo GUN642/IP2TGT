@@ -8,6 +8,7 @@ import { VisualMode } from "./nvg.js";
 import { Hud } from "./hud.js";
 import { mountCockpit, moveCockpit } from "./cockpit.js";
 import { loadOsmBuildings, obstacleHeights } from "./buildings.js";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -1211,49 +1212,74 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Koordinatenwahl auf der Karte
+// Koordinatenwahl: 2D-Karte und eigene Position (GPS)
 // ---------------------------------------------------------------------------
 
-let picking = null;
-const clickHandler = new Cesium.ScreenSpaceEventHandler(canvas);
-clickHandler.setInputAction((ev) => {
-  if (!picking) return;
-  let cart;
-  if (scene.pickPositionSupported) cart = scene.pickPosition(ev.position);
-  if (!cart && globe.show) {
-    const ray = camera.getPickRay(ev.position);
-    cart = globe.pick(ray, scene);
+function tryParse(str, ref) {
+  try {
+    const c = geo.parseCoordinate(str, ref && geo.toMgrs(ref.lat, ref.lon));
+    return { lat: c.lat, lon: c.lon };
+  } catch {
+    return null;
   }
-  if (!cart) cart = camera.pickEllipsoid(ev.position);
-  if (!cart) return;
-  const c = Cesium.Cartographic.fromCartesian(cart);
-  const str = geo.toMgrs(c.latitude / DEG, c.longitude / DEG);
-  const input = picking === "tgt" ? $("tgtInput") : $("ipInput");
-  input.value = str;
-  endPicking();
-  onMissionInput();
-}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
 
-function startPicking(which) {
-  if (sim.traj) {
-    exitSim();
+// Im Modus „Kurs & Distanz“ wird der IP aus dem TGT abgeleitet
+function deriveIpFn() {
+  if (cfg.approachMode !== "course") return null;
+  return (tgt) => {
+    const c = readNumber("courseInput", 0);
+    const crs = cfg.courseRef === "mag" ? c + geo.magneticDeclination(tgt.lat, tgt.lon) : c;
+    const d = readNumber("distInput", 5) * (cfg.distUnit === "km" ? 1000 : NM);
+    const p = geo.direct(tgt.lat, tgt.lon, crs + 180, d);
+    return { lat: p.lat, lon: p.lon };
+  };
+}
+
+async function pickOnMap(which, gps = false) {
+  if (sim.traj) exitSim();
+  const tgt = tryParse($("tgtInput").value);
+  const ip = cfg.approachMode === "ip" ? tryParse($("ipInput").value, tgt) : null;
+  let res;
+  try {
+    res = await openMapPicker({ tgt, ip, active: which, deriveIp: deriveIpFn(), gps });
+  } catch (e) {
+    toast(e.message, true);
+    return;
   }
-  picking = which;
-  document.body.classList.add("picking");
-  const hint = $("hint");
-  hint.textContent = `Klicken Sie auf die Karte, um ${which === "tgt" ? "die Landezone (TGT)" : "den IP"} zu setzen · Esc = Abbrechen`;
-  hint.hidden = false;
-  document.querySelectorAll(".pick").forEach((b) => b.classList.toggle("active", b.dataset.pick === which));
+  if (!res) return;
+  if (res.tgt) $("tgtInput").value = geo.toMgrs(res.tgt.lat, res.tgt.lon);
+  if (res.ip) {
+    $("ipInput").value = geo.toMgrs(res.ip.lat, res.ip.lon);
+    if (cfg.approachMode !== "ip") {
+      cfg.approachMode = "ip";
+      setApproachSeg("ip");
+      showApproachMode("ip");
+    }
+  }
+  saveInputs();
+  mission = computeMission();
+  drawRoute(mission);
+  flyToOverview(mission);
 }
-function endPicking() {
-  picking = null;
-  document.body.classList.remove("picking");
-  $("hint").hidden = true;
-  document.querySelectorAll(".pick").forEach((b) => b.classList.remove("active"));
+
+async function useGpsFor(which, btn) {
+  btn.disabled = true;
+  try {
+    const p = await getCurrentPosition();
+    $(which === "tgt" ? "tgtInput" : "ipInput").value = geo.toMgrs(p.lat, p.lon);
+    if (sim.traj) exitSim();
+    saveInputs();
+    mission = computeMission();
+    drawRoute(mission);
+    if (mission.ok) flyToOverview(mission);
+    toast(`Aktuelle Position als ${which === "tgt" ? "TGT" : "IP"} übernommen (±${Math.round(p.accuracy)} m)`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
 }
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && picking) endPicking();
-});
 
 function exitSim() {
   setPlaying(false);
@@ -1344,7 +1370,7 @@ const showApproachMode = (v) => {
   $("courseBlock").hidden = v !== "course";
   onMissionInput();
 };
-segInit("approachMode", "approachMode", showApproachMode);
+const setApproachSeg = segInit("approachMode", "approachMode", showApproachMode);
 showApproachMode(cfg.approachMode);
 segInit("courseRef", "courseRef", onMissionInput);
 segInit("distUnit", "distUnit", onMissionInput);
@@ -1357,11 +1383,8 @@ setModeSeg("day");
 ["tgtInput", "ipInput", "courseInput", "distInput", "decel", "leadIn", "hoverH", "descRate", "obstacles"].forEach(
   (id) => $(id).addEventListener("input", onMissionInput),
 );
-document
-  .querySelectorAll(".pick")
-  .forEach((b) =>
-    b.addEventListener("click", () => (picking === b.dataset.pick ? endPicking() : startPicking(b.dataset.pick))),
-  );
+document.querySelectorAll(".pick").forEach((b) => b.addEventListener("click", () => pickOnMap(b.dataset.pick)));
+document.querySelectorAll(".gps").forEach((b) => b.addEventListener("click", () => useGpsFor(b.dataset.gps, b)));
 
 $("source").addEventListener("change", async (e) => {
   cfg.source = e.target.value;
