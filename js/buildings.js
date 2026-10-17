@@ -45,17 +45,20 @@ const DEFAULT_HEIGHT = {
   bunker: 4,
 };
 
+/** Zahl aus OSM-Tag (z. B. "12 m", "40'", "3,5") in Metern */
+export function parseNum(v) {
+  if (v == null) return NaN;
+  const m = String(v)
+    .replace(",", ".")
+    .match(/[\d.]+/);
+  if (!m) return NaN;
+  let x = parseFloat(m[0]);
+  if (/ft|'/.test(v)) x *= 0.3048;
+  return x;
+}
+
 function parseHeight(tags) {
-  const num = (v) => {
-    if (v == null) return NaN;
-    const m = String(v)
-      .replace(",", ".")
-      .match(/[\d.]+/);
-    if (!m) return NaN;
-    let x = parseFloat(m[0]);
-    if (/ft|'/.test(v)) x *= 0.3048;
-    return x;
-  };
+  const num = parseNum;
   let h = num(tags.height);
   if (!isFinite(h)) {
     const lv = num(tags["building:levels"]);
@@ -77,20 +80,14 @@ export function pointInRing(lat, lon, ring) {
   return inside;
 }
 
-/**
- * Lädt Gebäude innerhalb des Polygons (Array [lat, lon]).
- * sampleGround(points[{lat,lon}]) -> Promise<number[]> liefert Bodenhöhen (Szenen-Höhensystem).
- */
-export async function loadOsmBuildings(polygon, sampleGround, onStatus = () => {}) {
-  const poly = polygon.map(([la, lo]) => `${la.toFixed(6)} ${lo.toFixed(6)}`).join(" ");
-  const q = `[out:json][timeout:40];(way["building"](poly:"${poly}");relation["building"]["type"="multipolygon"](poly:"${poly}"););out geom qt 20000;`;
-  let data = null,
-    lastErr;
+/** Overpass-Abfrage mit Ausweich-Servern. onTry(host) meldet den aktuellen Server. */
+export async function overpassQuery(q, onTry = () => {}, timeoutMs = 60000) {
+  let lastErr;
   for (const ep of ENDPOINTS) {
     try {
-      onStatus(`OSM-Gebäude werden geladen (${new URL(ep).host}) …`);
+      onTry(new URL(ep).host);
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 45000);
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       const r = await fetch(ep, {
         method: "POST",
         body: "data=" + encodeURIComponent(q),
@@ -99,13 +96,22 @@ export async function loadOsmBuildings(polygon, sampleGround, onStatus = () => {
       });
       clearTimeout(timer);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      data = await r.json();
-      break;
+      return await r.json();
     } catch (e) {
       lastErr = e;
     }
   }
-  if (!data) throw lastErr || new Error("Overpass nicht erreichbar");
+  throw lastErr || new Error("Overpass nicht erreichbar");
+}
+
+/**
+ * Lädt Gebäude innerhalb des Polygons (Array [lat, lon]).
+ * sampleGround(points[{lat,lon}]) -> Promise<number[]> liefert Bodenhöhen (Szenen-Höhensystem).
+ */
+export async function loadOsmBuildings(polygon, sampleGround, onStatus = () => {}) {
+  const poly = polygon.map(([la, lo]) => `${la.toFixed(6)} ${lo.toFixed(6)}`).join(" ");
+  const q = `[out:json][timeout:40];(way["building"](poly:"${poly}");relation["building"]["type"="multipolygon"](poly:"${poly}"););out geom qt 20000;`;
+  const data = await overpassQuery(q, (host) => onStatus(`OSM-Gebäude werden geladen (${host}) …`));
 
   const footprints = [];
   for (const el of data.elements || []) {

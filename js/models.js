@@ -205,7 +205,8 @@ function disc(mesh, plane, r, color, segs = 48) {
 // ---------------------------------------------------------------------------
 
 /** meshes: [{mesh, material: {color?, alpha?, doubleSided?, blend?}}] -> GLB Uint8Array */
-function toGlb(parts) {
+/** instancing (optional): {translation: Float32Array, scale: Float32Array} -> EXT_mesh_gpu_instancing */
+function toGlb(parts, instancing) {
   const bufs = [];
   let offset = 0;
   const bufferViews = [],
@@ -256,9 +257,43 @@ function toGlb(parts) {
     prims.push({ attributes: { POSITION: iP, NORMAL: iN, COLOR_0: iC }, material: materials.length - 1 });
   });
   meshes.push({ primitives: prims });
-  nodes.push({ mesh: 0, name: "root" });
+  const node = { mesh: 0, name: "root" };
+  let extensionsUsed;
+  if (instancing) {
+    const addInst = (arr) => {
+      const f = arr instanceof Float32Array ? arr : new Float32Array(arr);
+      bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: f.byteLength });
+      bufs.push(f);
+      offset += f.byteLength;
+      const min = [Infinity, Infinity, Infinity],
+        max = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < f.length; i += 3) {
+        for (let k = 0; k < 3; k++) {
+          min[k] = Math.min(min[k], f[i + k]);
+          max[k] = Math.max(max[k], f[i + k]);
+        }
+      }
+      accessors.push({
+        bufferView: bufferViews.length - 1,
+        componentType: 5126,
+        count: f.length / 3,
+        type: "VEC3",
+        min,
+        max,
+      });
+      return accessors.length - 1;
+    };
+    node.extensions = {
+      EXT_mesh_gpu_instancing: {
+        attributes: { TRANSLATION: addInst(instancing.translation), SCALE: addInst(instancing.scale) },
+      },
+    };
+    extensionsUsed = ["EXT_mesh_gpu_instancing"];
+  }
+  nodes.push(node);
   const json = {
     asset: { version: "2.0", generator: "IP2TGT procedural" },
+    ...(extensionsUsed ? { extensionsUsed, extensionsRequired: extensionsUsed } : {}),
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes,
@@ -308,6 +343,11 @@ const C = {
   blade: [0.12, 0.12, 0.12, 1],
   tip: [0.75, 0.68, 0.2, 1],
   disc: [0.1, 0.1, 0.1, 0.12],
+  trunk: [0.25, 0.19, 0.13, 1],
+  needle: [0.09, 0.18, 0.1, 1],
+  needle2: [0.11, 0.21, 0.11, 1],
+  leaf: [0.16, 0.27, 0.12, 1],
+  leaf2: [0.2, 0.32, 0.14, 1],
 };
 
 function bodyPaint(base, glassTest) {
@@ -608,4 +648,27 @@ const cache = {};
 export function getHelicopterDef(type) {
   if (!cache[type]) cache[type] = type === "CH47" ? buildCH47() : buildCH53();
   return cache[type];
+}
+
+// ---------------------------------------------------------------------------
+// Bäume (Einheitsgröße: Höhe 1, Spitze bei z = 1) mit GPU-Instancing
+// ---------------------------------------------------------------------------
+
+/**
+ * kind: "conifer" | "broadleaf"; translation/scale: Float32Array (x,y,z je Baum, lokales ENU-System).
+ * Scale = (Kronenbreite, Kronenbreite, Höhe) relativ zum Einheitsbaum.
+ */
+export function treeGlb(kind, translation, scale) {
+  const m = new Mesh();
+  if (kind === "conifer") {
+    cylinder(m, [0, 0, 0.12], "z", 0.07, 0.24, C.trunk, 6);
+    cylinder(m, [0, 0, 0.42], "z", 0.5, 0.5, C.needle, 8, 0.18);
+    cylinder(m, [0, 0, 0.75], "z", 0.34, 0.5, C.needle2, 8, 0.0);
+  } else {
+    cylinder(m, [0, 0, 0.2], "z", 0.08, 0.4, C.trunk, 6);
+    cylinder(m, [0, 0, 0.5], "z", 0.32, 0.25, C.leaf, 9, 0.5);
+    cylinder(m, [0, 0, 0.74], "z", 0.5, 0.24, C.leaf2, 9, 0.38);
+    cylinder(m, [0, 0, 0.93], "z", 0.38, 0.14, C.leaf2, 9, 0.12);
+  }
+  return toGlb([{ mesh: m, material: { roughness: 0.95, metallic: 0 } }], { translation, scale });
 }

@@ -20,6 +20,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
   2. Nach Überflug des IP: Kurs halten, Geländefolgeflug in der gewählten Höhe über Grund (Hindernisse/Gebäude werden mit überflogen)
   3. Kurz vor der LZ (Standard 0,5 NM): Verzögerung mit Flare, Sinkflug in den Hover über der LZ
   4. Hover (10 ft) und Aufsetzen bis zum Boden
+- **Hindernisse & Vegetation (OpenStreetMap, alle Datenquellen):** Freileitungen mit Masten und Leiterseilen (inkl. Durchhang), Sende-/Funkmasten, Türme, Schornsteine, Windkraftanlagen, Wald/Gehölz sowie Einzelbäume und Baumreihen als 3D-Objekte. Höhen stammen aus dem OSM-Tag `height`, sonst aus typischen Werten (Masten nach Spannungsebene, Waldhöhe einstellbar, Standard 22 m) – geschätzte Höhen sind im HUD mit `~` markiert. Hindernisse werden im Höhenprofil überflogen; das HUD warnt vor Leitungen und Hindernissen voraus (⚠, Λ-Symbol mit Höhe über Grund). Mit Google 3D Tiles sind Bäume/Bewuchs bereits fotorealistisch im Modell enthalten.
 - **Hubschrauber:** CH-53G (6-Blatt-Hauptrotor, Heckrotor) oder CH-47F (Tandemrotor), mit drehenden Rotoren.
 - **Ansichten:** Cockpit (rechter Pilotensitz, Umsehen mit der Maus), Außen (Orbit), Beobachter an der LZ, freie Kamera.
 - **HUD** mit Kursband, Kurs-Bug zum TGT, GS, Radarhöhe, MSL-Höhe, Steig-/Sinkrate, Horizont/Nicklage, Flugbahnvektor, LZ- und IP-Markern, Distanz und ETE.
@@ -71,6 +72,7 @@ js/geo.js           MGRS/Lat-Lon-Parser, Vincenty-Geodäsie, WMM2025-Missweisung
 js/flight.js        Höhenprofil (Geländefolge), Trajektorie (Verzögerung, Hover, Aufsetzen)
 js/terrain.js       Cesium-TerrainProvider für AWS Terrarium-Kacheln + Höhen-Sampler
 js/buildings.js     OSM-Gebäude via Overpass (Extrusion, Hindernishöhen)
+js/obstacles.js     Leitungen, Masten, Windräder, Wald/Bäume (OSM), Hindernisprofil & HUD-Warnungen
 js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position
 js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F (GLB im Speicher)
 js/hud.js           HUD-Symbologie
@@ -84,4 +86,4 @@ js/wmm2025.js       WMM2025-Koeffizienten (NOAA/BGS, gemeinfrei)
 
 ## Hinweis
 
-Trainings- und Visualisierungswerkzeug. Gelände-, Hindernis- und Luftbilddaten können veraltet, ungenau oder unvollständig sein (z. B. fehlen Freileitungen, Masten und Bewuchs außerhalb von Google 3D Tiles). **Nicht für die reale Einsatz- oder Flugplanung verwenden.**
+Trainings- und Visualisierungswerkzeug. Gelände-, Hindernis- und Luftbilddaten können veraltet, ungenau oder unvollständig sein (OSM ist nicht vollständig: nicht jede Leitung, jeder Mast oder Baum ist erfasst, Höhen sind teils geschätzt; es ersetzt keine amtlichen Luftfahrthindernisdaten). **Nicht für die reale Einsatz- oder Flugplanung verwenden.**

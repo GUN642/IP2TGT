@@ -271,6 +271,41 @@ export class Hud {
     if (st.distToIP > 30) marker(d.ipScreen, "IP", `${(st.distToIP / NM).toFixed(1)}`, "diamond");
     marker(d.tgtScreen, "LZ", st.distToGo > 50 ? `${(st.distToGo / NM).toFixed(2)} NM` : null, "box");
 
+    // -------- Hindernisse (Symbol Λ + Höhe über Grund) ----------------------
+    const warnCol = d.nvg ? "rgba(230,255,200,0.98)" : "rgba(255,196,64,0.98)";
+    c.save();
+    c.strokeStyle = c.fillStyle = warnCol;
+    for (const hm of d.hazardMarks || []) {
+      const p = hm.screen;
+      if (!p || !p.visible || p.x < 0 || p.x > w || p.y < 0 || p.y > h) continue;
+      const s = 9 * scale;
+      c.beginPath();
+      c.moveTo(p.x - s, p.y + s);
+      c.lineTo(p.x, p.y - s);
+      c.lineTo(p.x + s, p.y + s);
+      c.moveTo(p.x, p.y - s);
+      c.lineTo(p.x, p.y + s);
+      c.stroke();
+      c.font = font(10, 700);
+      c.textAlign = "center";
+      c.fillText(`${hm.est ? "~" : ""}${Math.round(hm.aglFt)}`, p.x, p.y + s + 9 * scale);
+    }
+    if (d.hazard) {
+      const hz = d.hazard;
+      const near = hz.dist < 900;
+      if (!near || Math.floor(performance.now() / 400) % 2 === 0) {
+        c.font = font(15, 800);
+        c.textAlign = "center";
+        const y = top + 92 * scale;
+        c.fillText(
+          `⚠ ${hz.label} ${(hz.dist / NM).toFixed(1)} NM · ${hz.est ? "~" : ""}${Math.round(hz.aglFt)} FT`,
+          cx,
+          y,
+        );
+      }
+    }
+    c.restore();
+
     // -------- Unten: Distanz / Zeit / Phase ----------------------------------
     const by = d.full ? h * 0.66 : h - (w < 860 ? 250 : 120);
     c.textAlign = "center";

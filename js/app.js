@@ -8,6 +8,7 @@ import { VisualMode } from "./nvg.js";
 import { Hud } from "./hud.js";
 import { mountCockpit, moveCockpit } from "./cockpit.js";
 import { loadOsmBuildings, obstacleHeights } from "./buildings.js";
+import { loadObstacles } from "./obstacles.js";
 import { openMapPicker, getCurrentPosition } from "./mappicker.js";
 
 const Cesium = window.Cesium;
@@ -64,6 +65,9 @@ const DEFAULTS = {
   buildings: true,
   shadows: true,
   routeShow: true,
+  trees: true,
+  obstShow: true,
+  forestHeight: 22,
 };
 const cfg = Object.assign({}, DEFAULTS, store.get("cfg", {}));
 const keys = { ion: store.get("ionToken", ""), google: store.get("googleKey", "") };
@@ -517,6 +521,7 @@ function saveInputs() {
   cfg.hoverH = readNumber("hoverH", cfg.hoverH);
   cfg.descRate = readNumber("descRate", cfg.descRate);
   cfg.obstacles = $("obstacles").checked;
+  cfg.forestHeight = readNumber("forestHeight", cfg.forestHeight);
   saveCfg();
 }
 
@@ -719,7 +724,45 @@ async function sampleGroundForMission(m, pts, onStatus) {
       toast("OSM-Gebäude konnten nicht geladen werden (Overpass). Flug ohne Gebäude.", true, 6000);
     }
   }
+  // Leitungen, Masten, Windräder und Bäume (OSM) – in allen Datenquellen
+  const wantTrees = cfg.trees && data.source !== "google"; // Google 3D Tiles enthalten Bewuchs bereits
+  if (cfg.obstShow || wantTrees) {
+    try {
+      await loadMissionObstacles(m, N, wantTrees, onStatus);
+      if (cfg.obstacles && data.obst) {
+        const oh = data.obst.profile(pts);
+        obstacles = obstacles.map((x, i) => Math.max(x, oh[i]));
+      }
+    } catch (e) {
+      console.warn("Hindernisse", e);
+      toast("Hindernisse/Bäume konnten nicht geladen werden (Overpass). Flug ohne diese Daten.", true, 6000);
+    }
+  }
   return { ground, obstacles, N };
+}
+
+let obstKey = null;
+async function loadMissionObstacles(m, N, trees, onStatus) {
+  const key = [m.start.lat, m.start.lon, m.tgt.lat, m.tgt.lon, trees, cfg.obstShow, cfg.forestHeight, data.source]
+    .map(String)
+    .join(",");
+  if (obstKey === key && data.obst) return;
+  if (data.obst) {
+    data.obst.destroy();
+    data.obst = null;
+  }
+  data.obst = await loadObstacles(scene, m, {
+    trees,
+    obstacles: cfg.obstShow,
+    forestHeight: cfg.forestHeight,
+    mobile: isMobile,
+    shadows: cfg.shadows && !isMobile,
+    sampleGround: (p) => sampleTerrarium(p, 14).then((h) => h.map((x) => x + N)),
+    onStatus,
+  });
+  obstKey = key;
+  const c = data.obst.counts;
+  console.info(`Hindernisse: ${c.obstacles} Masten/Objekte, ${c.spans} Spannfelder, ${c.trees} Bäume`);
 }
 
 let osmKey = null;
@@ -806,6 +849,7 @@ async function startMission() {
     sim.tgtCarto = Cesium.Cartographic.fromDegrees(m.tgt.lon, m.tgt.lat);
     sim.t = 0;
     sim.prevAlt = null;
+    sim.lift = 0;
     sim.ralt = m.agl;
     drawRoute(m);
     setSunForLocation(m.tgt);
@@ -817,7 +861,7 @@ async function startMission() {
     setView(sim.view);
     // Kacheln für den Startpunkt laden lassen
     loading("Geodaten werden geladen", "Luftbilder und Gelände am Startpunkt …");
-    await waitForTiles(7000);
+    await waitForTiles(20000, Cesium.Cartographic.fromDegrees(m.start.lon, m.start.lat), ground[0]);
     loading(false);
     closePanel();
     setPlaying(true);
@@ -833,13 +877,20 @@ async function startMission() {
   }
 }
 
-function waitForTiles(maxMs) {
+// Wartet, bis die Kacheln am Startpunkt geladen sind und das gerenderte Gelände
+// dem Höhenprofil entspricht (sonst würde der Flug in einer groben Kachel „stecken“).
+function waitForTiles(maxMs, carto, expected) {
   return new Promise((resolve) => {
     const t0 = performance.now();
     let calm = 0;
     const check = () => {
       const loaded = globe.show ? globe.tilesLoaded : data.tileset ? data.tileset.tilesLoaded : true;
-      calm = loaded ? calm + 1 : 0;
+      let near = true;
+      if (globe.show && carto && isFinite(expected)) {
+        const h = globe.getHeight(carto);
+        near = isFinite(h) && Math.abs(h - expected) < 15;
+      }
+      calm = loaded && near ? calm + 1 : 0;
       if (calm > 8 || performance.now() - t0 > maxMs) resolve();
       else requestAnimationFrame(check);
     };
@@ -1011,6 +1062,15 @@ scene.preUpdate.addEventListener(() => {
   }
   sim.frame++;
   const st = sim.traj.sample(sim.t, sim.gTGT);
+  // Sicherheitsnetz: liegt das gerenderte Gelände (z. B. noch grobe Kachel) über der
+  // geplanten Flughöhe, wird die Darstellung sanft angehoben statt „unter die Erde“ zu fliegen.
+  let lift = 0;
+  if (globe.show && st.phaseIndex < 3) {
+    const gr = globe.getHeight(Cesium.Cartographic.fromDegrees(st.lon, st.lat));
+    if (isFinite(gr)) lift = Math.max(0, gr + Math.max(3, 0.5 * st.agl) - st.alt);
+  }
+  sim.lift = (sim.lift || 0) + (lift - (sim.lift || 0)) * Math.min(1, dt * (lift > sim.lift ? 6 : 1.5));
+  if (sim.lift > 0.05) st.alt += sim.lift;
   sim.lastSt = st;
   const mats = updateHeliMatrices(st, sim.t);
 
@@ -1092,7 +1152,30 @@ scene.postRender.addEventListener(() => {
   if (tr.times.ip > 0.5 && sim.t > tr.times.ip && sim.t < tr.times.ip + 4) message = "IP – KURS HALTEN";
   else if (sim.t > tr.times.decel && sim.t < tr.times.decel + 3) message = "VERZÖGERN";
   else if (sim.t > tr.times.landed && sim.t < tr.times.landed + 5) message = "TOUCHDOWN";
+  // Hindernisse voraus (Warnung + Symbole im HUD)
+  let hazard = null;
+  const hazardMarks = [];
+  if (data.obst && cfg.obstShow) {
+    for (const hz of data.obst.hazards) {
+      const ahead = hz.s - st.s;
+      if (ahead < -30) continue;
+      if (ahead > 4000) break;
+      // Leitungskreuzungen und Objekte direkt auf der Route; Masten neben der Route nur als Symbol
+      const close = hz.kind === "wire" || Math.abs(hz.v || 0) < (hz.kind === "tower" ? 60 : 150);
+      if (!hazard && close && ahead > 80 && ahead < 2800)
+        hazard = { ...hz, dist: ahead, aglFt: (hz.top - hz.ground) / FT };
+      if (hazardMarks.length < 14)
+        hazardMarks.push({
+          screen: project(Cesium.Cartesian3.fromDegrees(hz.lon, hz.lat, hz.top)),
+          label: hz.label,
+          aglFt: (hz.top - hz.ground) / FT,
+          est: hz.est,
+        });
+    }
+  }
   hud.draw({
+    hazard,
+    hazardMarks,
     st: { ...st, heading: st.heading - m.variation },
     full: sim.view === "cockpit",
     nvg: visual.mode === "nvg",
@@ -1352,6 +1435,9 @@ $("quality").value = cfg.quality;
 $("buildings").checked = cfg.buildings;
 $("shadows").checked = cfg.shadows;
 $("routeShow").checked = cfg.routeShow;
+$("trees").checked = cfg.trees;
+$("obstShow").checked = cfg.obstShow;
+$("forestHeight").value = cfg.forestHeight;
 
 function bindSlider(rangeId, numId, key) {
   const r = $(rangeId),
@@ -1384,9 +1470,18 @@ const setModeSeg = segInit("modeSel", null, (v) => setMode(v));
 setViewSeg("cockpit");
 setModeSeg("day");
 
-["tgtInput", "ipInput", "courseInput", "distInput", "decel", "leadIn", "hoverH", "descRate", "obstacles"].forEach(
-  (id) => $(id).addEventListener("input", onMissionInput),
-);
+[
+  "tgtInput",
+  "ipInput",
+  "courseInput",
+  "distInput",
+  "decel",
+  "leadIn",
+  "hoverH",
+  "descRate",
+  "obstacles",
+  "forestHeight",
+].forEach((id) => $(id).addEventListener("input", onMissionInput));
 document.querySelectorAll(".pick").forEach((b) => b.addEventListener("click", () => pickOnMap(b.dataset.pick)));
 document.querySelectorAll(".gps").forEach((b) => b.addEventListener("click", () => useGpsFor(b.dataset.gps, b)));
 
@@ -1435,6 +1530,18 @@ $("shadows").addEventListener("change", (e) => {
   saveCfg();
   viewer.shadows = cfg.shadows && visual.mode === "day";
 });
+for (const [id, key, group] of [
+  ["trees", "trees", "trees"],
+  ["obstShow", "obstShow", "obstacles"],
+]) {
+  $(id).addEventListener("change", (e) => {
+    cfg[key] = e.target.checked;
+    saveCfg();
+    const loaded = data.obst && data.obst.groups[group].length;
+    if (loaded) data.obst.setShow(group, cfg[key]);
+    else if (cfg[key]) toast("Wird beim nächsten Anflugstart geladen.");
+  });
+}
 $("routeShow").addEventListener("change", (e) => {
   cfg.routeShow = e.target.checked;
   saveCfg();
