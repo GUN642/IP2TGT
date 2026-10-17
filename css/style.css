@@ -709,6 +709,7 @@ body.sim #panel:not(.closed) ~ #controls {
 }
 
 #toast {
+  white-space: pre-line;
   position: fixed;
   z-index: 30;
   left: 50%;

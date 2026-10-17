@@ -4,6 +4,7 @@ const Cesium = window.Cesium;
 
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
@@ -83,22 +84,29 @@ export function pointInRing(lat, lon, ring) {
 /** Overpass-Abfrage mit Ausweich-Servern. onTry(host) meldet den aktuellen Server. */
 export async function overpassQuery(q, onTry = () => {}, timeoutMs = 60000) {
   let lastErr;
-  for (const ep of ENDPOINTS) {
-    try {
-      onTry(new URL(ep).host);
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-      const r = await fetch(ep, {
-        method: "POST",
-        body: "data=" + encodeURIComponent(q),
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (e) {
-      lastErr = e;
+  // Zwei Durchgänge über alle Server; Overpass begrenzt Anfragen pro Nutzer (HTTP 429)
+  // und meldet Zeitüberschreitungen teils mit HTTP 200 + "remark" bei leerem Ergebnis.
+  for (let round = 0; round < 2; round++) {
+    if (round) await new Promise((r) => setTimeout(r, 4000));
+    for (const ep of ENDPOINTS) {
+      try {
+        onTry(new URL(ep).host);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+        const r = await fetch(ep, {
+          method: "POST",
+          body: "data=" + encodeURIComponent(q),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (data.remark && /error|timed out|out of memory/i.test(data.remark)) throw new Error(data.remark);
+        return data;
+      } catch (e) {
+        lastErr = e;
+      }
     }
   }
   throw lastErr || new Error("Overpass nicht erreichbar");

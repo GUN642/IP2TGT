@@ -1,15 +1,15 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=8";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=8";
-import { getHelicopterDef } from "./models.js?v=8";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=8";
-import { VisualMode } from "./nvg.js?v=8";
-import { Hud } from "./hud.js?v=8";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=8";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=8";
-import { loadObstacles } from "./obstacles.js?v=8";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=8";
+import * as geo from "./geo.js?v=9";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=9";
+import { getHelicopterDef } from "./models.js?v=9";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=9";
+import { VisualMode } from "./nvg.js?v=9";
+import { Hud } from "./hud.js?v=9";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=9";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=9";
+import { loadObstacles } from "./obstacles.js?v=9";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=9";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -721,7 +721,7 @@ async function sampleGroundForMission(m, pts, onStatus) {
       }
     } catch (e) {
       console.warn("Overpass", e);
-      toast("OSM-Gebäude konnten nicht geladen werden (Overpass). Flug ohne Gebäude.", true, 6000);
+      osmErrors.push("Gebäude");
     }
   }
   // Leitungen, Masten, Windräder und Bäume (OSM) – in allen Datenquellen
@@ -735,7 +735,7 @@ async function sampleGroundForMission(m, pts, onStatus) {
       }
     } catch (e) {
       console.warn("Hindernisse", e);
-      toast("Hindernisse/Bäume konnten nicht geladen werden (Overpass). Flug ohne diese Daten.", true, 6000);
+      osmErrors.push("Hindernisse/Bäume");
     }
   }
   return { ground, obstacles, N };
@@ -765,7 +765,21 @@ async function loadMissionObstacles(m, N, trees, onStatus) {
   console.info(`Hindernisse: ${c.obstacles} Masten/Objekte, ${c.spans} Spannfelder, ${c.trees} Bäume`);
 }
 
+// Kurze Zusammenfassung der geladenen OSM-Daten
+function osmSummary() {
+  const parts = [];
+  if (data.source === "standard" && cfg.buildings)
+    parts.push(`${data.osmFootprints.length.toLocaleString("de-DE")} Gebäude`);
+  if (data.obst) {
+    const c = data.obst.counts;
+    if (cfg.obstShow) parts.push(`${c.obstacles} Masten/Hindernisse`);
+    if (c.trees) parts.push(`${c.trees.toLocaleString("de-DE")} Bäume`);
+  }
+  return parts.length ? `OSM: ${parts.join(" · ")}` : "";
+}
+
 let osmKey = null;
+let osmErrors = [];
 async function loadStandardBuildings(m, onStatus) {
   const key = `${m.start.lat.toFixed(5)},${m.start.lon.toFixed(5)},${m.tgt.lat.toFixed(5)},${m.tgt.lon.toFixed(5)}`;
   if (osmKey === key && data.osm) {
@@ -824,6 +838,7 @@ async function startMission() {
 
     const ds = clamp(m.length / 1500, 15, 60);
     const pts = pathPoints(m.start, m.courseStart, m.length, ds);
+    osmErrors = [];
     const { ground, obstacles, N } = await sampleGroundForMission(m, pts, (t) => loading(null, t));
     sim.geoidN = N;
     loading(null, "Flugbahn wird berechnet …");
@@ -865,9 +880,14 @@ async function startMission() {
     loading(false);
     closePanel();
     setPlaying(true);
-    toast(
-      `${heli.def.name}: Anflug ${geo.fmtCourse(m.courseMag)}°M, ${(m.dist / NM).toFixed(1)} NM, ${Math.round(m.agl / FT)} ft AGL, ${Math.round(m.gs / KT)} kt`,
-    );
+    const info = `${heli.def.name}: Anflug ${geo.fmtCourse(m.courseMag)}°M, ${(m.dist / NM).toFixed(1)} NM, ${Math.round(m.agl / FT)} ft AGL, ${Math.round(m.gs / KT)} kt`;
+    if (osmErrors.length)
+      toast(
+        `⚠ OSM-Server ausgelastet – nicht geladen: ${osmErrors.join(", ")}. Beim nächsten Start wird es erneut versucht.`,
+        true,
+        9000,
+      );
+    else toast(`${info}\n${osmSummary()}`, false, 7000);
   } catch (e) {
     console.error(e);
     loading(false);
