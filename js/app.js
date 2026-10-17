@@ -1,15 +1,15 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=7";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=7";
-import { getHelicopterDef } from "./models.js?v=7";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=7";
-import { VisualMode } from "./nvg.js?v=7";
-import { Hud } from "./hud.js?v=7";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=7";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=7";
-import { loadObstacles } from "./obstacles.js?v=7";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=7";
+import * as geo from "./geo.js?v=8";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=8";
+import { getHelicopterDef } from "./models.js?v=8";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=8";
+import { VisualMode } from "./nvg.js?v=8";
+import { Hud } from "./hud.js?v=8";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=8";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=8";
+import { loadObstacles } from "./obstacles.js?v=8";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=8";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;

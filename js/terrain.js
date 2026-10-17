@@ -106,7 +106,7 @@ function despeckle(hgt) {
   return out;
 }
 
-async function decodeTile(blob) {
+async function decodeRaw(blob) {
   const png = await decodePng(await blob.arrayBuffer());
   if (png.w !== TILE_PX || png.h !== TILE_PX) throw new Error("unerwartete Kachelgröße");
   const hgt = new Float32Array(TILE_PX * TILE_PX);
@@ -124,6 +124,32 @@ async function decodeTile(blob) {
       b = data[i * bpp + 2];
     }
     hgt[i] = r * 256 + g + b / 256 - 32768;
+  }
+  return hgt;
+}
+
+const NODATA = -1000; // Terrarium "keine Daten" = -32768 m
+
+/**
+ * Lücken im Datensatz füllen: Der AWS-Terrarium-Datensatz enthält in den feinsten
+ * Zoomstufen teils komplett leere Kacheln (alle Pixel -32768 m). Diese Pixel werden
+ * aus der nächstgröberen Zoomstufe (rekursiv) interpoliert, danach Ausreißer geglättet.
+ */
+async function finishTile(hgt, z, x, y) {
+  let bad = 0;
+  for (let i = 0; i < hgt.length; i++) if (!(hgt[i] > NODATA)) bad++;
+  if (bad && z > 0) {
+    const parent = await fetchTile(z - 1, x >> 1, y >> 1);
+    const ox = (x & 1) * (TILE_PX / 2),
+      oy = (y & 1) * (TILE_PX / 2);
+    for (let i = 0; i < hgt.length; i++) {
+      if (hgt[i] > NODATA) continue;
+      const px = i % TILE_PX,
+        py = (i / TILE_PX) | 0;
+      hgt[i] = bilinear(parent, ox + (px + 0.5) / 2, oy + (py + 0.5) / 2);
+    }
+  } else if (bad) {
+    for (let i = 0; i < hgt.length; i++) if (!(hgt[i] > NODATA)) hgt[i] = 0;
   }
   return despeckle(hgt);
 }
@@ -185,15 +211,18 @@ export class TerrariumTerrainProvider {
     const childTileMask = level < MAX_LEVEL ? 15 : 0;
     // Fehler bewusst weiterreichen: Cesium lädt abgebrochene Kacheln später neu und
     // interpoliert fehlgeschlagene aus der Elternkachel (keine Löcher im Gelände).
-    return promise.then(decodeTile).then((h) => {
-      const buf = new Float32Array(GRID * GRID);
-      for (let j = 0; j < GRID; j++) {
-        for (let i = 0; i < GRID; i++) {
-          buf[j * GRID + i] = bilinear(h, (i / (GRID - 1)) * TILE_PX, (j / (GRID - 1)) * TILE_PX);
+    return promise
+      .then(decodeRaw)
+      .then((h) => finishTile(h, level, x, y))
+      .then((h) => {
+        const buf = new Float32Array(GRID * GRID);
+        for (let j = 0; j < GRID; j++) {
+          for (let i = 0; i < GRID; i++) {
+            buf[j * GRID + i] = bilinear(h, (i / (GRID - 1)) * TILE_PX, (j / (GRID - 1)) * TILE_PX);
+          }
         }
-      }
-      return new Cesium.HeightmapTerrainData({ buffer: buf, width: GRID, height: GRID, childTileMask });
-    });
+        return new Cesium.HeightmapTerrainData({ buffer: buf, width: GRID, height: GRID, childTileMask });
+      });
   }
   getLevelMaximumGeometricError(level) {
     return this._levelZeroError / (1 << level);
@@ -223,7 +252,8 @@ function fetchTile(z, x, y) {
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.blob();
         })
-        .then(decodeTile)
+        .then(decodeRaw)
+        .then((h) => finishTile(h, z, x, y))
         .catch((e) => {
           tileCache.delete(key);
           throw e;
