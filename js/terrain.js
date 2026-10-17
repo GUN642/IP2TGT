@@ -9,21 +9,99 @@ const TILE_PX = 256;
 const MAX_LEVEL = 15;
 const GRID = 65;
 
-async function decodeTile(blobOrImage) {
-  const bmp = blobOrImage instanceof Blob ? await createImageBitmap(blobOrImage) : blobOrImage;
-  const canvas =
-    typeof OffscreenCanvas !== "undefined"
-      ? new OffscreenCanvas(TILE_PX, TILE_PX)
-      : Object.assign(document.createElement("canvas"), { width: TILE_PX, height: TILE_PX });
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(bmp, 0, 0, TILE_PX, TILE_PX);
-  const px = ctx.getImageData(0, 0, TILE_PX, TILE_PX).data;
-  const h = new Float32Array(TILE_PX * TILE_PX);
-  for (let i = 0, j = 0; i < h.length; i++, j += 4) {
-    h[i] = px[j] * 256 + px[j + 1] + px[j + 2] / 256 - 32768;
+// PNG direkt dekodieren (ohne Canvas): Browser mit Anti-Fingerprinting (z. B. Samsung
+// Internet) verrauschen Canvas-Pixel beim Auslesen – bei Terrarium bedeutet ein Fehler
+// von 1 im Rotkanal 256 m Höhensprung (Löcher im Gelände, falsche Flughöhe).
+async function inflate(bytes) {
+  const ds = new DecompressionStream("deflate");
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function decodePng(buf) {
+  const d = new Uint8Array(buf);
+  const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  if (dv.getUint32(0) !== 0x89504e47) throw new Error("kein PNG");
+  let p = 8,
+    w = 0,
+    h = 0,
+    depth = 0,
+    ctype = 0,
+    interlace = 0;
+  const idat = [];
+  let palette = null;
+  while (p < d.length) {
+    const len = dv.getUint32(p);
+    const type = String.fromCharCode(d[p + 4], d[p + 5], d[p + 6], d[p + 7]);
+    const body = d.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") {
+      w = dv.getUint32(p + 8);
+      h = dv.getUint32(p + 12);
+      depth = d[p + 16];
+      ctype = d[p + 17];
+      interlace = d[p + 20];
+    } else if (type === "PLTE") palette = body;
+    else if (type === "IDAT") idat.push(body);
+    else if (type === "IEND") break;
+    p += 12 + len;
   }
-  if (bmp.close) bmp.close();
-  return h;
+  if (depth !== 8 || interlace !== 0 || ![2, 3, 6].includes(ctype)) throw new Error("PNG-Format nicht unterstützt");
+  const bpp = ctype === 2 ? 3 : ctype === 6 ? 4 : 1;
+  const total = idat.reduce((a, b) => a + b.length, 0);
+  const comp = new Uint8Array(total);
+  let o = 0;
+  for (const c of idat) {
+    comp.set(c, o);
+    o += c.length;
+  }
+  const raw = await inflate(comp);
+  const stride = w * bpp;
+  const out = new Uint8Array(w * h * bpp);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    const src = y * (stride + 1) + 1;
+    const dst = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? out[dst + x - bpp] : 0;
+      const b = y > 0 ? out[dst + x - stride] : 0;
+      const c = x >= bpp && y > 0 ? out[dst + x - stride - bpp] : 0;
+      let v = raw[src + x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) {
+        const pp = a + b - c,
+          pa = Math.abs(pp - a),
+          pb = Math.abs(pp - b),
+          pc = Math.abs(pp - c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      out[dst + x] = v & 255;
+    }
+  }
+  return { w, h, bpp, data: out, palette };
+}
+
+async function decodeTile(blob) {
+  const png = await decodePng(await blob.arrayBuffer());
+  if (png.w !== TILE_PX || png.h !== TILE_PX) throw new Error("unerwartete Kachelgröße");
+  const hgt = new Float32Array(TILE_PX * TILE_PX);
+  const { data, bpp, palette } = png;
+  for (let i = 0; i < hgt.length; i++) {
+    let r, g, b;
+    if (palette) {
+      const k = data[i] * 3;
+      r = palette[k];
+      g = palette[k + 1];
+      b = palette[k + 2];
+    } else {
+      r = data[i * bpp];
+      g = data[i * bpp + 1];
+      b = data[i * bpp + 2];
+    }
+    hgt[i] = r * 256 + g + b / 256 - 32768;
+  }
+  return hgt;
 }
 
 function bilinear(h, u, v) {

@@ -830,7 +830,7 @@ async function startMission() {
     const raw = Float64Array.from(ground.map((g, i) => Math.max(g, obstacles[i])));
     // Die LZ selbst gilt als hindernisfrei
     const G = smoothGroundProfile(raw, ds, m.gs);
-    sim.gTGT = ground[ground.length - 1];
+    sim.gTGT = sim.gTGT0 = ground[ground.length - 1];
     sim.traj = buildTrajectory({
       start: m.start,
       courseStart: m.courseStart,
@@ -1114,7 +1114,8 @@ setInterval(() => {
       const hs = safeSampleHeight(sim.tgtCarto);
       if (isFinite(hs) && isFinite(h) && Math.abs(hs - h) < 1.5) h = hs;
     }
-    if (isFinite(h) && Math.abs(h - sim.gTGT) < 60) sim.gTGT += (h - sim.gTGT) * (sim.playing ? 0.35 : 1);
+    // Nur kleine Korrekturen gegenüber dem geplanten Wert zulassen (Schutz vor fehlerhaften Kacheln)
+    if (isFinite(h) && Math.abs(h - sim.gTGT0) < 15) sim.gTGT += (h - sim.gTGT) * (sim.playing ? 0.35 : 1);
   }
   if (sim.view === "lz" && !globe.show && sim.lzEyeCarto) {
     const h = safeSampleHeight(sim.lzEyeCarto);
