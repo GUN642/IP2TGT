@@ -1,15 +1,15 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=9";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=9";
-import { getHelicopterDef } from "./models.js?v=9";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=9";
-import { VisualMode } from "./nvg.js?v=9";
-import { Hud } from "./hud.js?v=9";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=9";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=9";
-import { loadObstacles } from "./obstacles.js?v=9";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=9";
+import * as geo from "./geo.js?v=10";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=10";
+import { getHelicopterDef } from "./models.js?v=10";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=10";
+import { VisualMode } from "./nvg.js?v=10";
+import { Hud } from "./hud.js?v=10";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=10";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=10";
+import { loadObstacles } from "./obstacles.js?v=10";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=10";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -101,6 +101,8 @@ const keys = { ion: store.get("ionToken", ""), google: store.get("googleKey", ""
 })();
 
 const saveCfg = () => store.set("cfg", cfg);
+// Anzeige-/Eingabeeinheit für Entfernungen (global umschaltbar)
+const UNIT = () => (cfg.distUnit === "km" ? { f: 1000, lbl: "km" } : { f: NM, lbl: "NM" });
 
 // ---------------------------------------------------------------------------
 // Viewer
@@ -341,17 +343,19 @@ function computeMission() {
     return res;
   }
 
-  const leadIn = Math.max(0, readNumber("leadIn", 0.5)) * NM;
+  const leadIn = Math.max(0, readNumber("leadIn", 0.5)) * UNIT().f;
   const start = leadIn > 1 ? geo.direct(ip.lat, ip.lon, courseTrue + 180, leadIn) : { lat: ip.lat, lon: ip.lon };
   const inv2 = geo.inverse(start.lat, start.lon, tgt.lat, tgt.lon);
   const gs = readNumber("gsNum", 80) * KT;
-  const decel = Math.min(readNumber("decel", 0.5) * NM, dist * 0.9);
+  const decel = Math.min(readNumber("decel", 0.5) * UNIT().f, dist * 0.9);
   const ete = (dist - decel) / gs + (2 * decel) / gs;
   const courseMag = geo.norm360(courseTrue - variation);
 
   $("summary").innerHTML = [
     `<span class="chip"><label>KURS</label>${geo.fmtCourse(courseMag)}°M · ${geo.fmtCourse(courseTrue)}°T</span>`,
-    `<span class="chip"><label>DIST</label>${(dist / NM).toFixed(2)} NM · ${(dist / 1000).toFixed(2)} km</span>`,
+    cfg.distUnit === "km"
+      ? `<span class="chip"><label>DIST</label>${(dist / 1000).toFixed(2)} km · ${(dist / NM).toFixed(2)} NM</span>`
+      : `<span class="chip"><label>DIST</label>${(dist / NM).toFixed(2)} NM · ${(dist / 1000).toFixed(2)} km</span>`,
     `<span class="chip"><label>ETE</label>${geo.fmtTime(ete)}</span>`,
     `<span class="chip"><label>VAR</label>${Math.abs(variation).toFixed(1)}°${variation >= 0 ? "E" : "W"}</span>`,
     `<span class="chip" id="elevChip"><label>LZ ELEV</label>…</span>`,
@@ -880,7 +884,7 @@ async function startMission() {
     loading(false);
     closePanel();
     setPlaying(true);
-    const info = `${heli.def.name}: Anflug ${geo.fmtCourse(m.courseMag)}°M, ${(m.dist / NM).toFixed(1)} NM, ${Math.round(m.agl / FT)} ft AGL, ${Math.round(m.gs / KT)} kt`;
+    const info = `${heli.def.name}: Anflug ${geo.fmtCourse(m.courseMag)}°M, ${(m.dist / UNIT().f).toFixed(1)} ${UNIT().lbl}, ${Math.round(m.agl / FT)} ft AGL, ${Math.round(m.gs / KT)} kt`;
     if (osmErrors.length)
       toast(
         `⚠ OSM-Server ausgelastet – nicht geladen: ${osmErrors.join(", ")}. Beim nächsten Start wird es erneut versucht.`,
@@ -1208,6 +1212,7 @@ scene.postRender.addEventListener(() => {
     ete: Math.max(0, tr.times.hover - sim.t),
     bearingTgt: brg - m.variation,
     pxPerDeg: ppd,
+    unit: UNIT(),
     headYaw: sim.view === "cockpit" ? sim.head.yaw : 0,
     headPitch: sim.view === "cockpit" ? sim.head.pitch : 0,
     aglCmdFt: st.agl / FT,
@@ -1225,7 +1230,7 @@ function updateTelemetry(st) {
   $("tRalt").textContent = Math.round(sim.ralt / FT);
   $("tAlt").textContent = Math.round((st.alt - sim.geoidN) / FT);
   $("tHdg").textContent = geo.fmtCourse(st.heading - m.variation);
-  $("tDist").textContent = (st.distToGo / NM).toFixed(2);
+  $("tDist").textContent = (st.distToGo / UNIT().f).toFixed(2);
   $("tEte").textContent = geo.fmtTime(Math.max(0, sim.traj.times.hover - sim.t));
 }
 
@@ -1476,6 +1481,12 @@ function bindSlider(rangeId, numId, key) {
   });
 }
 bindSlider("agl", "aglNum", "agl");
+$("aglTicks").addEventListener("click", (e) => {
+  const t = e.target.closest("span[data-v]");
+  if (!t) return;
+  $("agl").value = $("aglNum").value = t.dataset.v;
+  onMissionInput();
+});
 bindSlider("gs", "gsNum", "gs");
 
 const showApproachMode = (v) => {
@@ -1486,7 +1497,32 @@ const showApproachMode = (v) => {
 const setApproachSeg = segInit("approachMode", "approachMode", showApproachMode);
 showApproachMode(cfg.approachMode);
 segInit("courseRef", "courseRef", onMissionInput);
-segInit("distUnit", "distUnit", onMissionInput);
+const unitSegs = ["distUnit", "distUnitGlobal"].map((id) => segInit(id, null, (v) => setDistUnit(v)));
+function applyUnitLabels() {
+  const u = UNIT();
+  unitSegs.forEach((set) => set(cfg.distUnit));
+  document.querySelectorAll(".du").forEach((e) => (e.textContent = u.lbl));
+  const km = cfg.distUnit === "km";
+  $("decel").max = km ? 3.7 : 2;
+  $("decel").min = km ? 0.25 : 0.15;
+  $("leadIn").max = km ? 9 : 5;
+  $("distInput").max = km ? 150 : 80;
+}
+function setDistUnit(v) {
+  if (v === cfg.distUnit) return applyUnitLabels();
+  const old = UNIT().f;
+  cfg.distUnit = v;
+  const nw = UNIT().f;
+  // vorhandene Werte umrechnen, damit IP/Verzögerung gleich bleiben
+  for (const id of ["distInput", "decel", "leadIn"]) {
+    const x = parseFloat($(id).value);
+    if (isFinite(x)) $(id).value = +((x * old) / nw).toFixed(2);
+  }
+  applyUnitLabels();
+  saveInputs();
+  onMissionInput();
+}
+applyUnitLabels();
 segInit("heliType", "heli");
 setViewSeg = segInit("viewSel", null, (v) => setView(v));
 const setModeSeg = segInit("modeSel", null, (v) => setMode(v));

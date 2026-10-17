@@ -19,7 +19,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=9" rel="stylesheet" />
+    <link href="css/style.css?v=10" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -46,7 +46,7 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v9</span></p>
+          <p>Hubschrauber-Anflugsimulator · <span class="ver">v10</span></p>
         </div>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
       </header>
@@ -172,6 +172,13 @@
 
         <section>
           <h2>Flugprofil</h2>
+          <div class="unit-row">
+            <span>Entfernungen in</span>
+            <div class="seg mini" id="distUnitGlobal">
+              <button data-v="nm" class="on">NM</button>
+              <button data-v="km">km</button>
+            </div>
+          </div>
           <div class="slider-field">
             <div class="slider-head">
               <span>Anflughöhe</span
@@ -180,7 +187,14 @@
               >
             </div>
             <input id="agl" type="range" min="20" max="500" step="5" value="100" />
-            <div class="ticks"><span>20</span><span>100</span><span>200</span><span>300</span><span>500</span></div>
+            <div class="ticks" id="aglTicks">
+              <span data-v="20" style="left: calc(8px + (100% - 16px) * 0)">20</span
+              ><span data-v="100" style="left: calc(8px + (100% - 16px) * 0.1667)">100</span
+              ><span data-v="200" style="left: calc(8px + (100% - 16px) * 0.375)">200</span
+              ><span data-v="300" style="left: calc(8px + (100% - 16px) * 0.5833)">300</span
+              ><span data-v="400" style="left: calc(8px + (100% - 16px) * 0.7917)">400</span
+              ><span data-v="500" style="left: calc(8px + (100% - 16px) * 1)">500</span>
+            </div>
           </div>
           <div class="slider-field">
             <div class="slider-head">
@@ -193,11 +207,11 @@
             <summary>Erweitert</summary>
             <div class="grid2">
               <label class="field"
-                ><span>Verzögerung ab (NM vor LZ)</span
+                ><span>Verzögerung ab (<span class="du">NM</span> vor LZ)</span
                 ><input id="decel" type="number" min="0.15" max="2" step="0.05" value="0.5"
               /></label>
               <label class="field"
-                ><span>Vorlauf vor IP (NM)</span
+                ><span>Vorlauf vor IP (<span class="du">NM</span>)</span
                 ><input id="leadIn" type="number" min="0" max="5" step="0.1" value="0.5"
               /></label>
               <label class="field"
@@ -281,7 +295,7 @@
         <div><label>RALT</label><b id="tRalt">—</b><i>ft</i></div>
         <div><label>ALT</label><b id="tAlt">—</b><i>ft MSL</i></div>
         <div><label>HDG</label><b id="tHdg">—</b><i>°M</i></div>
-        <div><label>DIST</label><b id="tDist">—</b><i>NM</i></div>
+        <div><label>DIST</label><b id="tDist">—</b><i class="du">NM</i></div>
         <div><label>ETE</label><b id="tEte">—</b><i>mm:ss</i></div>
       </div>
     </div>
@@ -415,6 +429,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=9"></script>
+    <script type="module" src="js/app.js?v=10"></script>
   </body>
 </html>

@@ -481,13 +481,39 @@ input[type="range"] {
   cursor: pointer;
 }
 .ticks {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 16px;
   font:
     500 10px "JetBrains Mono",
     monospace;
   color: var(--muted);
-  padding: 0 2px;
+}
+.ticks span {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  cursor: pointer;
+  padding: 0 3px;
+}
+.ticks span:hover {
+  color: var(--text);
+}
+.ticks span::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  width: 1px;
+  height: 4px;
+  background: var(--line-strong);
+}
+.unit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .adv summary {

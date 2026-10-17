@@ -1,6 +1,6 @@
 // HUD-Symbologie (an ANVIS/HUD- bzw. DNVS-Darstellungen angelehnt) auf einem 2D-Canvas.
 
-import { fmtCourse, fmtTime, norm180, NM, FT, KT } from "./geo.js?v=9";
+import { fmtCourse, fmtTime, norm180, NM, FT, KT } from "./geo.js?v=10";
 
 export class Hud {
   constructor(canvas) {
@@ -48,6 +48,7 @@ export class Hud {
       `${weight} ${Math.round(px * scale)}px "JetBrains Mono", ui-monospace, monospace`;
     c.textBaseline = "middle";
     const st = d.st;
+    const u = d.unit || { f: NM, lbl: "NM" };
     const cx = w / 2,
       cy = h * (d.full ? 0.47 : 0.5);
 
@@ -268,8 +269,8 @@ export class Hud {
         c.fillText(label, ex - Math.cos(ang) * 26, ey - Math.sin(ang) * 22);
       }
     };
-    if (st.distToIP > 30) marker(d.ipScreen, "IP", `${(st.distToIP / NM).toFixed(1)}`, "diamond");
-    marker(d.tgtScreen, "LZ", st.distToGo > 50 ? `${(st.distToGo / NM).toFixed(2)} NM` : null, "box");
+    if (st.distToIP > 30) marker(d.ipScreen, "IP", `${(st.distToIP / u.f).toFixed(1)}`, "diamond");
+    marker(d.tgtScreen, "LZ", st.distToGo > 50 ? `${(st.distToGo / u.f).toFixed(2)} ${u.lbl}` : null, "box");
 
     // -------- Hindernisse (Symbol Λ + Höhe über Grund) ----------------------
     const warnCol = d.nvg ? "rgba(230,255,200,0.98)" : "rgba(255,196,64,0.98)";
@@ -298,7 +299,7 @@ export class Hud {
         c.textAlign = "center";
         const y = top + 92 * scale;
         c.fillText(
-          `⚠ ${hz.label} ${(hz.dist / NM).toFixed(1)} NM · ${hz.est ? "~" : ""}${Math.round(hz.aglFt)} FT`,
+          `⚠ ${hz.label} ${(hz.dist / u.f).toFixed(1)} ${u.lbl} · ${hz.est ? "~" : ""}${Math.round(hz.aglFt)} FT`,
           cx,
           y,
         );
@@ -310,8 +311,8 @@ export class Hud {
     const by = d.full ? h * 0.66 : h - (w < 860 ? 250 : 120);
     c.textAlign = "center";
     c.font = font(15, 700);
-    const dist = st.distToGo / NM;
-    c.fillText(`TGT ${dist >= 10 ? dist.toFixed(1) : dist.toFixed(2)} NM   ${fmtTime(d.ete)}`, cx, by);
+    const dist = st.distToGo / u.f;
+    c.fillText(`TGT ${dist >= 10 ? dist.toFixed(1) : dist.toFixed(2)} ${u.lbl}   ${fmtTime(d.ete)}`, cx, by);
     c.font = font(12);
     c.fillText(st.phase, cx, by + 20 * scale);
     if (d.message) {
