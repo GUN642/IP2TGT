@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>IP2TGT Anflugsimulator</title>
+    <meta
+      name="description"
+      content="Simulation des Hubschrauber-Anflugs vom Initial Point (IP) zur Landezone (TGT/LZ) auf 3D-Gelände mit Luftbildern – Cockpit- und Außenansicht, Tag und NVG."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1117'/%3E%3Cpath d='M10 44 L32 18 L54 44' fill='none' stroke='%2342e3a0' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='18' r='5' fill='%23ffb347'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+    <link href="css/style.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
+  </head>
+  <body>
+    <div id="cesium"></div>
+    <svg id="cockpit" aria-hidden="true"></svg>
+    <canvas id="hud"></canvas>
+    <div id="tube" aria-hidden="true"></div>
+
+    <!-- ===================== Planungspanel ===================== -->
+    <aside id="panel" class="glass">
+      <header class="brand">
+        <div class="logo">
+          <svg viewBox="0 0 64 64" width="34" height="34">
+            <path
+              d="M10 44 L32 18 L54 44"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="32" cy="18" r="5" fill="var(--amber)" />
+          </svg>
+        </div>
+        <div>
+          <h1>IP <span>→</span> TGT</h1>
+          <p>Hubschrauber-Anflugsimulator</p>
+        </div>
+        <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
+      </header>
+
+      <div class="scroll">
+        <section>
+          <h2><span class="dot tgt"></span>Landezone (TGT / LZ)</h2>
+          <div class="coord-input">
+            <input
+              id="tgtInput"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="z. B. 32U MA 77269 51009 oder N50 06.654 E008 40.926"
+            />
+            <button class="icon-btn pick" data-pick="tgt" title="Auf Karte wählen">⌖</button>
+          </div>
+          <div class="coord-meta" id="tgtMeta"></div>
+        </section>
+
+        <section>
+          <h2><span class="dot ip"></span>Anflug</h2>
+          <div class="seg" id="approachMode">
+            <button data-v="ip" class="on">IP-Koordinate</button>
+            <button data-v="course">Kurs &amp; Distanz</button>
+          </div>
+          <div id="ipBlock">
+            <div class="coord-input">
+              <input
+                id="ipInput"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="IP: MGRS oder Lat/Lon (kurz: MA 712 489)"
+              />
+              <button class="icon-btn pick" data-pick="ip" title="Auf Karte wählen">⌖</button>
+            </div>
+            <div class="coord-meta" id="ipMeta"></div>
+          </div>
+          <div id="courseBlock" hidden>
+            <div class="grid2">
+              <label class="field">
+                <span>Final Course</span>
+                <div class="unit-input">
+                  <input id="courseInput" type="number" min="0" max="360" step="1" value="90" />
+                  <div class="seg mini" id="courseRef">
+                    <button data-v="mag" class="on">MAG</button>
+                    <button data-v="true">TRUE</button>
+                  </div>
+                </div>
+              </label>
+              <label class="field">
+                <span>Entfernung IP–TGT</span>
+                <div class="unit-input">
+                  <input id="distInput" type="number" min="0.2" max="50" step="0.1" value="5" />
+                  <div class="seg mini" id="distUnit">
+                    <button data-v="nm" class="on">NM</button>
+                    <button data-v="km">km</button>
+                  </div>
+                </div>
+              </label>
+            </div>
+            <div class="coord-meta" id="ipDerived"></div>
+          </div>
+          <div class="summary" id="summary"></div>
+        </section>
+
+        <section>
+          <h2>Flugprofil</h2>
+          <div class="slider-field">
+            <div class="slider-head">
+              <span>Anflughöhe</span
+              ><span class="val"
+                ><input id="aglNum" type="number" min="20" max="500" step="5" value="100" /> ft AGL</span
+              >
+            </div>
+            <input id="agl" type="range" min="20" max="500" step="5" value="100" />
+            <div class="ticks"><span>20</span><span>100</span><span>200</span><span>300</span><span>500</span></div>
+          </div>
+          <div class="slider-field">
+            <div class="slider-head">
+              <span>Ground Speed</span
+              ><span class="val"><input id="gsNum" type="number" min="30" max="150" step="5" value="80" /> kt</span>
+            </div>
+            <input id="gs" type="range" min="30" max="150" step="5" value="80" />
+          </div>
+          <details class="adv">
+            <summary>Erweitert</summary>
+            <div class="grid2">
+              <label class="field"
+                ><span>Verzögerung ab (NM vor LZ)</span
+                ><input id="decel" type="number" min="0.15" max="2" step="0.05" value="0.5"
+              /></label>
+              <label class="field"
+                ><span>Vorlauf vor IP (NM)</span
+                ><input id="leadIn" type="number" min="0" max="5" step="0.1" value="0.5"
+              /></label>
+              <label class="field"
+                ><span>Hover-Höhe (ft)</span><input id="hoverH" type="number" min="3" max="60" step="1" value="10"
+              /></label>
+              <label class="field"
+                ><span>Sinkrate Aufsetzen (ft/s)</span
+                ><input id="descRate" type="number" min="1" max="10" step="0.5" value="2"
+              /></label>
+            </div>
+            <label class="check"
+              ><input id="obstacles" type="checkbox" checked /> Gebäude/Hindernisse im Höhenprofil
+              berücksichtigen</label
+            >
+          </details>
+        </section>
+
+        <section>
+          <h2>Hubschrauber</h2>
+          <div class="seg big" id="heliType">
+            <button data-v="CH53" class="on"><b>CH-53G</b><small>6-Blatt Hauptrotor</small></button>
+            <button data-v="CH47"><b>CH-47F</b><small>Tandemrotor</small></button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Daten &amp; Darstellung</h2>
+          <label class="field">
+            <span>Geodaten-Quelle</span>
+            <select id="source">
+              <option value="standard">Standard (ohne Schlüssel): Esri Luftbild + AWS Gelände + OSM-Gebäude</option>
+              <option value="ion">Cesium ion: World Terrain + Luftbild + OSM Buildings</option>
+              <option value="google">Google Photorealistic 3D Tiles (fotorealistisch)</option>
+            </select>
+          </label>
+          <div class="grid2">
+            <label class="field">
+              <span>Luftbild</span>
+              <select id="imagery">
+                <option value="esri">Esri World Imagery</option>
+                <option value="bing">Bing Maps Aerial (ion)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Grafikqualität</span>
+              <select id="quality">
+                <option value="low">Performance</option>
+                <option value="normal" selected>Normal</option>
+                <option value="high">Hoch</option>
+              </select>
+            </label>
+          </div>
+          <div class="toggles">
+            <label class="check"><input id="buildings" type="checkbox" checked /> 3D-Gebäude</label>
+            <label class="check"><input id="shadows" type="checkbox" checked /> Schatten</label>
+            <label class="check"><input id="routeShow" type="checkbox" checked /> Route &amp; Marker</label>
+          </div>
+          <button id="keysBtn" class="link-btn">🔑 API-Schlüssel (Cesium ion / Google) …</button>
+        </section>
+      </div>
+
+      <footer class="actions">
+        <button id="previewBtn" class="btn ghost" title="Route auf der Karte anzeigen">Route zeigen</button>
+        <button id="shareBtn" class="btn ghost" title="Mission als Link kopieren">Link</button>
+        <button id="startBtn" class="btn primary">▶ Anflug starten</button>
+      </footer>
+    </aside>
+    <button id="panelOpen" class="glass icon-btn floating" title="Planung öffnen (P)" hidden>☰</button>
+
+    <!-- ===================== Telemetrie ===================== -->
+    <div id="telemetry" class="glass" hidden>
+      <div class="phase" id="tPhase">—</div>
+      <div class="tgrid">
+        <div><label>GS</label><b id="tGs">—</b><i>kt</i></div>
+        <div><label>RALT</label><b id="tRalt">—</b><i>ft</i></div>
+        <div><label>ALT</label><b id="tAlt">—</b><i>ft MSL</i></div>
+        <div><label>HDG</label><b id="tHdg">—</b><i>°M</i></div>
+        <div><label>DIST</label><b id="tDist">—</b><i>NM</i></div>
+        <div><label>ETE</label><b id="tEte">—</b><i>mm:ss</i></div>
+      </div>
+    </div>
+
+    <!-- ===================== Steuerleiste ===================== -->
+    <div id="controls" class="glass" hidden>
+      <div class="ctl-group">
+        <button id="playBtn" class="icon-btn lg" title="Start/Pause (Leertaste)">❚❚</button>
+        <button id="restartBtn" class="icon-btn" title="Neu starten (Home)">⟲</button>
+        <div class="speed">
+          <button id="slowerBtn" class="icon-btn sm" title="Langsamer (-)">−</button>
+          <span id="speedLbl">1×</span>
+          <button id="fasterBtn" class="icon-btn sm" title="Schneller (+)">+</button>
+        </div>
+      </div>
+      <div class="timeline">
+        <input id="timeline" type="range" min="0" max="1000" step="1" value="0" />
+        <div class="time-lbls">
+          <span id="timeLbl">00:00</span><span id="marks"></span><span id="totalLbl">00:00</span>
+        </div>
+      </div>
+      <div class="ctl-group">
+        <div class="seg" id="viewSel">
+          <button data-v="cockpit" class="on" title="Cockpit (1)">Cockpit</button>
+          <button data-v="chase" title="Außenansicht (2)">Außen</button>
+          <button data-v="lz" title="Beobachter an der LZ (3)">LZ</button>
+          <button data-v="free" title="Freie Kamera (4)">Frei</button>
+        </div>
+        <div class="seg" id="modeSel">
+          <button data-v="day" class="on" title="Tag">☀ Tag</button>
+          <button data-v="nvg" title="Nacht mit NVG (N)">◐ NVG</button>
+        </div>
+        <button id="hudBtn" class="icon-btn on" title="HUD ein/aus (H)">HUD</button>
+        <button id="tubeBtn" class="icon-btn" title="NVG-Sichtfeld 40° (T)">40°</button>
+        <button id="fsBtn" class="icon-btn" title="Vollbild (F)">⛶</button>
+      </div>
+    </div>
+
+    <div id="hint" class="glass" hidden></div>
+    <div id="toast" hidden></div>
+
+    <div id="loading" hidden>
+      <div class="loader glass">
+        <div class="spinner"></div>
+        <div>
+          <b id="loadTitle">Mission wird vorbereitet</b>
+          <p id="loadText">…</p>
+        </div>
+      </div>
+    </div>
+
+    <dialog id="keysDlg" class="glass">
+      <form method="dialog">
+        <h2>API-Schlüssel</h2>
+        <p class="muted">
+          Die Schlüssel werden nur lokal in diesem Browser gespeichert (localStorage) und direkt an Cesium bzw. Google
+          gesendet.
+        </p>
+        <label class="field">
+          <span
+            >Cesium ion Access Token
+            <a href="https://ion.cesium.com/tokens" target="_blank" rel="noopener">(kostenlos erstellen)</a></span
+          >
+          <input id="ionToken" type="password" autocomplete="off" placeholder="eyJhbGciOi…" />
+        </label>
+        <label class="field">
+          <span
+            >Google Maps Platform API-Key (Map Tiles API)
+            <a href="https://developers.google.com/maps/documentation/tile/get-api-key" target="_blank" rel="noopener"
+              >(Anleitung)</a
+            ></span
+          >
+          <input id="googleKey" type="password" autocomplete="off" placeholder="AIza…" />
+        </label>
+        <p class="muted small">
+          Google Photorealistic 3D Tiles funktionieren entweder mit einem Google-Key oder – ohne Google-Key – über
+          Cesium ion (Asset „Google Photorealistic 3D Tiles“ im ion-Konto hinzufügen).
+        </p>
+        <menu>
+          <button value="cancel" class="btn ghost">Abbrechen</button>
+          <button id="keysSave" value="save" class="btn primary">Speichern &amp; neu laden</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
