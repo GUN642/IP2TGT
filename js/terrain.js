@@ -81,26 +81,17 @@ export class TerrariumTerrainProvider {
     const promise = resource.fetchBlob();
     if (!promise) return undefined; // gedrosselt -> Cesium versucht es später erneut
     const childTileMask = level < MAX_LEVEL ? 15 : 0;
-    return promise
-      .then(decodeTile)
-      .then((h) => {
-        const buf = new Float32Array(GRID * GRID);
-        for (let j = 0; j < GRID; j++) {
-          for (let i = 0; i < GRID; i++) {
-            buf[j * GRID + i] = bilinear(h, (i / (GRID - 1)) * TILE_PX, (j / (GRID - 1)) * TILE_PX);
-          }
+    // Fehler bewusst weiterreichen: Cesium lädt abgebrochene Kacheln später neu und
+    // interpoliert fehlgeschlagene aus der Elternkachel (keine Löcher im Gelände).
+    return promise.then(decodeTile).then((h) => {
+      const buf = new Float32Array(GRID * GRID);
+      for (let j = 0; j < GRID; j++) {
+        for (let i = 0; i < GRID; i++) {
+          buf[j * GRID + i] = bilinear(h, (i / (GRID - 1)) * TILE_PX, (j / (GRID - 1)) * TILE_PX);
         }
-        return new Cesium.HeightmapTerrainData({ buffer: buf, width: GRID, height: GRID, childTileMask });
-      })
-      .catch(() => {
-        // Fallback: flache Kachel statt Loch im Globus
-        return new Cesium.HeightmapTerrainData({
-          buffer: new Float32Array(GRID * GRID),
-          width: GRID,
-          height: GRID,
-          childTileMask,
-        });
-      });
+      }
+      return new Cesium.HeightmapTerrainData({ buffer: buf, width: GRID, height: GRID, childTileMask });
+    });
   }
   getLevelMaximumGeometricError(level) {
     return this._levelZeroError / (1 << level);

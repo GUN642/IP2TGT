@@ -38,6 +38,10 @@ const store = {
   },
 };
 
+// Mobilgeräte: weniger GPU-Last (kein MSAA, kleinerer Kachel-Cache)
+const isMobile =
+  window.matchMedia?.("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+
 const DEFAULTS = {
   tgt: "32U NB 20005 62607",
   ip: "32U NB 12937 56630",
@@ -56,7 +60,7 @@ const DEFAULTS = {
   heli: "CH53",
   source: "standard",
   imagery: "esri",
-  quality: "normal",
+  quality: isMobile ? "low" : "normal",
   buildings: true,
   shadows: true,
   routeShow: true,
@@ -114,15 +118,15 @@ const viewer = new Cesium.Viewer("cesium", {
   infoBox: false,
   selectionIndicator: false,
   scene3DOnly: true,
-  msaaSamples: 4,
+  msaaSamples: isMobile ? 1 : 4,
   shadows: false,
 });
 const scene = viewer.scene;
 const globe = scene.globe;
 const camera = scene.camera;
 globe.depthTestAgainstTerrain = true;
-globe.tileCacheSize = 600;
-globe.preloadSiblings = true;
+globe.tileCacheSize = isMobile ? 250 : 600;
+globe.preloadSiblings = !isMobile;
 globe.baseColor = Cesium.Color.fromCssColorString("#1b2229");
 scene.fog.enabled = true;
 scene.highDynamicRange = false;
@@ -183,8 +187,8 @@ function segInit(id, key, onChange) {
 
 const QUALITY = {
   low: { sse: 3, sse3d: 24, res: 0.85, msaa: 1 },
-  normal: { sse: 1.8, sse3d: 12, res: 1, msaa: 4 },
-  high: { sse: 1.2, sse3d: 6, res: Math.min(window.devicePixelRatio || 1, 2), msaa: 4 },
+  normal: { sse: 1.8, sse3d: 12, res: 1, msaa: isMobile ? 1 : 4 },
+  high: { sse: 1.2, sse3d: 6, res: Math.min(window.devicePixelRatio || 1, 2), msaa: isMobile ? 2 : 4 },
 };
 const data = { source: null, tileset: null, osm: null, osmFootprints: [], geoidN: 0 };
 

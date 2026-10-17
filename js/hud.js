@@ -272,7 +272,7 @@ export class Hud {
     marker(d.tgtScreen, "LZ", st.distToGo > 50 ? `${(st.distToGo / NM).toFixed(2)} NM` : null, "box");
 
     // -------- Unten: Distanz / Zeit / Phase ----------------------------------
-    const by = d.full ? h * 0.66 : h - 120;
+    const by = d.full ? h * 0.66 : h - (w < 860 ? 250 : 120);
     c.textAlign = "center";
     c.font = font(15, 700);
     const dist = st.distToGo / NM;
