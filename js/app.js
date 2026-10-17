@@ -1103,7 +1103,9 @@ setInterval(() => {
   const carto = Cesium.Cartographic.fromDegrees(st.lon, st.lat);
   let g = safeSampleHeight(carto);
   if (!isFinite(g) && globe.show) g = globe.getHeight(carto);
-  sim.ralt = isFinite(g) ? Math.max(0, st.alt - g) : st.alt - st.groundRef;
+  const r = isFinite(g) ? st.alt - g : NaN;
+  // unplausible Messung (Loch/fehlende Kachel) -> geplante Höhe über Grund
+  sim.ralt = isFinite(r) && r > -5 && r < 1500 ? Math.max(0, r) : Math.max(0, st.alt - st.groundRef);
 
   if (st.distToGo < 1500) {
     let h = globe.show ? globe.getHeight(sim.tgtCarto) : safeSampleHeight(sim.tgtCarto);
@@ -1164,7 +1166,7 @@ scene.postRender.addEventListener(() => {
       const close = hz.kind === "wire" || Math.abs(hz.v || 0) < (hz.kind === "tower" ? 60 : 150);
       if (!hazard && close && ahead > 80 && ahead < 2800)
         hazard = { ...hz, dist: ahead, aglFt: (hz.top - hz.ground) / FT };
-      if (hazardMarks.length < 14)
+      if (hazardMarks.length < 8 && ahead > 0 && ahead < 2500)
         hazardMarks.push({
           screen: project(Cesium.Cartesian3.fromDegrees(hz.lon, hz.lat, hz.top)),
           label: hz.label,

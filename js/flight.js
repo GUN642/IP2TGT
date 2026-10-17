@@ -34,16 +34,6 @@ export function pathPoints(start, courseStart, length, ds) {
   return pts;
 }
 
-function slidingMax(arr, back, fwd) {
-  const out = new Float64Array(arr.length);
-  for (let i = 0; i < arr.length; i++) {
-    let m = -Infinity;
-    for (let j = Math.max(0, i - back); j <= Math.min(arr.length - 1, i + fwd); j++) m = Math.max(m, arr[j]);
-    out[i] = m;
-  }
-  return out;
-}
-
 function movingAvg(arr, half) {
   const out = new Float64Array(arr.length);
   for (let i = 0; i < arr.length; i++) {
@@ -64,16 +54,18 @@ function movingAvg(arr, half) {
  */
 export function smoothGroundProfile(ground, ds, gsMs) {
   const k = (m) => Math.max(1, Math.round(m / ds));
-  // Steig-/Sinkgradienten abhängig von der Geschwindigkeit (~1000 ft/min bzw. 700 ft/min)
-  const maxClimb = Math.min(0.25, 5.0 / Math.max(gsMs, 10)) * ds;
-  const maxDesc = Math.min(0.18, 3.5 / Math.max(gsMs, 10)) * ds;
-  let G = slidingMax(ground, k(50), k(120));
-  G = movingAvg(G, k(90));
+  // Enges Geländefolgen (Konturenflug): die Sollhöhe über Grund wird gehalten.
+  // Begrenzt werden nur die Steig-/Sinkraten (~2000 ft/min steigen, ~1400 ft/min sinken),
+  // damit Kuppen und Hindernisse rechtzeitig, aber nicht unnötig hoch überflogen werden.
+  const v = Math.max(gsMs, 10);
+  const maxClimb = Math.min(0.35, 10 / v) * ds;
+  const maxDesc = Math.min(0.3, 7 / v) * ds;
+  let G = movingAvg(ground, k(25));
   for (let i = 0; i < G.length; i++) G[i] = Math.max(G[i], ground[i]);
   for (let i = 1; i < G.length; i++) G[i] = Math.max(G[i], G[i - 1] - maxDesc);
   for (let i = G.length - 2; i >= 0; i--) G[i] = Math.max(G[i], G[i + 1] - maxClimb);
-  G = movingAvg(G, k(30));
-  for (let i = 0; i < G.length; i++) G[i] = Math.max(G[i], ground[i] - 2);
+  G = movingAvg(G, k(15));
+  for (let i = 0; i < G.length; i++) G[i] = Math.max(G[i], ground[i] - 1);
   return G;
 }
 

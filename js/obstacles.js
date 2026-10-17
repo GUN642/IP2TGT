@@ -4,7 +4,7 @@
 // Höhen: OSM-Tag "height" wo erfasst, sonst typische Werte (als "geschätzt" markiert).
 
 import { overpassQuery, parseNum } from "./buildings.js";
-import { treeGlb } from "./models.js";
+import { treeChunkGlb } from "./models.js";
 
 const Cesium = window.Cesium;
 const DEG = Math.PI / 180;
@@ -53,6 +53,9 @@ function hash01(a, b, c = 0) {
   return (h >>> 0) / 4294967296;
 }
 
+// OSM-Höhenangabe nur übernehmen, wenn plausibel (Tippfehler, falsche Einheiten)
+const okHeight = (h) => (isFinite(h) && h > 1 && h < 360 ? h : NaN);
+
 // ---------------------------------------------------------------------------
 // Typische Höhen (falls kein height-Tag)
 // ---------------------------------------------------------------------------
@@ -75,7 +78,7 @@ function towerDefaultHeight(voltage, minor) {
 }
 
 function pointObstacleSpec(tags) {
-  const h = parseNum(tags.height);
+  const h = okHeight(parseNum(tags.height));
   const est = !isFinite(h);
   if (tags["generator:source"] === "wind" || tags["generator:method"] === "wind_turbine") {
     const hub = est ? 120 : h;
@@ -351,7 +354,7 @@ export async function loadObstacles(scene, m, o) {
         const id = ids[k] ?? `${p.lat},${p.lon}`;
         if (!towerUse.has(id)) {
           const tw = towers.get(id);
-          const th = parseNum(tw?.tags?.height);
+          const th = okHeight(parseNum(tw?.tags?.height));
           const isPole = tw?.tags?.power === "pole" || minor;
           towerUse.set(id, {
             id,
@@ -456,7 +459,7 @@ export async function loadObstacles(scene, m, o) {
   // --------------------------- Bäume ---------------------------
   const trees = []; // {u, v, h, kind}
   if (o.trees) {
-    const maxTrees = o.mobile ? 12000 : 45000;
+    const maxTrees = o.mobile ? 10000 : 30000;
     const gen = (spacing) => {
       const list = [];
       const taken = new Set();
@@ -511,7 +514,7 @@ export async function loadObstacles(scene, m, o) {
     // Einzelbäume und Baumreihen
     for (const el of singleTrees) {
       const t = el.tags || {};
-      const th = parseNum(t.height);
+      const th = okHeight(parseNum(t.height));
       const h = isFinite(th) ? th : t.natural === "tree_row" ? 11 : 12;
       const conifer = t.leaf_type === "needleleaved";
       if (el.type === "node") {
@@ -544,32 +547,23 @@ export async function loadObstacles(scene, m, o) {
       // In Abschnitte (1,5 km) aufteilen -> bessere Sichtbarkeitsprüfung
       const chunks = new Map();
       for (const t of trees) {
-        const key = `${Math.floor(t.u / 1500)}:${t.conifer ? 1 : 0}`;
+        const key = Math.floor(t.u / 1500);
         if (!chunks.has(key)) chunks.set(key, []);
         chunks.get(key).push(t);
       }
       const shadows = o.shadows ? Cesium.ShadowMode.ENABLED : Cesium.ShadowMode.DISABLED;
-      for (const [key, list2] of chunks) {
+      for (const list2 of chunks.values()) {
         const c = list2[Math.floor(list2.length / 2)];
         const enu = Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(c.lon, c.lat, c.base));
         const inv = Cesium.Matrix4.inverseTransformation(enu, new Cesium.Matrix4());
-        const tr = new Float32Array(list2.length * 3),
-          sc = new Float32Array(list2.length * 3);
         const tmp = new Cesium.Cartesian3();
-        list2.forEach((t, i) => {
+        const local = list2.map((t) => {
           Cesium.Cartesian3.fromDegrees(t.lon, t.lat, t.base - 0.8, undefined, tmp);
           Cesium.Matrix4.multiplyByPoint(inv, tmp, tmp);
-          tr[i * 3] = tmp.x;
-          tr[i * 3 + 1] = tmp.y;
-          tr[i * 3 + 2] = tmp.z;
-          const w = t.h * (t.conifer ? 0.36 : 0.6);
-          sc[i * 3] = w;
-          sc[i * 3 + 1] = w;
-          sc[i * 3 + 2] = t.h + 0.8;
+          return { x: tmp.x, y: tmp.y, z: tmp.z, w: t.h * (t.conifer ? 0.36 : 0.6), h: t.h + 0.8, conifer: t.conifer };
         });
-        const glb = treeGlb(key.endsWith(":1") ? "conifer" : "broadleaf", tr, sc);
         const model = await Cesium.Model.fromGltfAsync({
-          url: URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" })),
+          url: URL.createObjectURL(new Blob([treeChunkGlb(local)], { type: "model/gltf-binary" })),
           upAxis: Cesium.Axis.Z,
           forwardAxis: Cesium.Axis.X,
           modelMatrix: enu,
