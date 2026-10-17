@@ -3,8 +3,8 @@
 // Windkraftanlagen, Wald/Gehölz sowie Einzelbäume und Baumreihen.
 // Höhen: OSM-Tag "height" wo erfasst, sonst typische Werte (als "geschätzt" markiert).
 
-import { overpassQuery, parseNum } from "./buildings.js";
-import { treeChunkGlb } from "./models.js";
+import { overpassQuery, parseNum } from "./buildings.js?v=7";
+import { treeChunkGlb } from "./models.js?v=7";
 
 const Cesium = window.Cesium;
 const DEG = Math.PI / 180;

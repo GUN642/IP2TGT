@@ -82,6 +82,30 @@ async function decodePng(buf) {
   return { w, h, bpp, data: out, palette };
 }
 
+// Einzelne Ausreißer (> 60 m vom Median der 8 Nachbarn) glätten – Schutz vor fehlerhaften Pixeln
+function despeckle(hgt) {
+  const n = TILE_PX;
+  const out = Float32Array.from(hgt);
+  const nb = new Float32Array(8);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      let k = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const xx = Math.min(Math.max(x + dx, 0), n - 1),
+            yy = Math.min(Math.max(y + dy, 0), n - 1);
+          nb[k++] = hgt[yy * n + xx];
+        }
+      nb.sort();
+      const med = (nb[3] + nb[4]) / 2;
+      const v = hgt[y * n + x];
+      if (Math.abs(v - med) > 60 || !isFinite(v)) out[y * n + x] = med;
+    }
+  }
+  return out;
+}
+
 async function decodeTile(blob) {
   const png = await decodePng(await blob.arrayBuffer());
   if (png.w !== TILE_PX || png.h !== TILE_PX) throw new Error("unerwartete Kachelgröße");
@@ -101,7 +125,7 @@ async function decodeTile(blob) {
     }
     hgt[i] = r * 256 + g + b / 256 - 32768;
   }
-  return hgt;
+  return despeckle(hgt);
 }
 
 function bilinear(h, u, v) {

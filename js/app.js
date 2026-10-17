@@ -1,15 +1,15 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js";
-import { getHelicopterDef } from "./models.js";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js";
-import { VisualMode } from "./nvg.js";
-import { Hud } from "./hud.js";
-import { mountCockpit, moveCockpit } from "./cockpit.js";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js";
-import { loadObstacles } from "./obstacles.js";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js";
+import * as geo from "./geo.js?v=7";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=7";
+import { getHelicopterDef } from "./models.js?v=7";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=7";
+import { VisualMode } from "./nvg.js?v=7";
+import { Hud } from "./hud.js?v=7";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=7";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=7";
+import { loadObstacles } from "./obstacles.js?v=7";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=7";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
