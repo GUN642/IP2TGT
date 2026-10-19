@@ -1,8 +1,8 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=16";
-import { isBlankImage } from "./imagery.js?v=16";
+import * as geo from "./geo.js?v=17";
+import { isBlankImage } from "./imagery.js?v=17";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -40,6 +40,37 @@ function loadImg(url) {
   return imgCache.get(url);
 }
 
+/** Kachel per fetch laden (so wie der 3D-Globus) – manche Proxys/Filter behandeln <img> anders */
+const fetchCache = new Map();
+function fetchImg(url) {
+  if (!fetchCache.has(url)) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 20000);
+    fetchCache.set(
+      url,
+      fetch(url, { mode: "cors", signal: ctl.signal })
+        .then((r) => (r.ok ? r.blob() : null))
+        .then((b) => (b && b.size ? createImageBitmap(b) : null))
+        .catch(() => null)
+        .then((im) => {
+          clearTimeout(t);
+          if (!im) fetchCache.delete(url);
+          return im;
+        }),
+    );
+  }
+  return fetchCache.get(url);
+}
+
+/** Esri-Kachel per fetch oder <img>; leere (einfarbige) Kacheln gelten als Fehlschlag */
+async function esriTile(url, d, kind) {
+  const e = await (kind === "fetch" ? fetchImg : loadImg)(url);
+  const ok = e && !isBlankImage(e) ? e : null;
+  if (e && !ok && !d.errors.includes("Esri: leere Kacheln")) d.errors.push("Esri: leere Kacheln");
+  d.esri[kind][ok ? "ok" : "fail"]++;
+  return ok;
+}
+
 const mercX = (lon, z) => ((lon + 180) / 360) * 256 * 2 ** z;
 const mercY = (lat, z) => {
   const r = lat * DEG;
@@ -74,37 +105,36 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
   const y0 = Math.floor((cy - off / 2) / 256),
     y1 = Math.floor((cy + off / 2) / 256);
   const jobs = [];
-  for (let tx = x0; tx <= x1; tx++)
-    for (let ty = y0; ty <= y1; ty++) {
-      const n = 2 ** z;
-      const xx = ((tx % n) + n) % n;
-      const url =
-        tiles.basemap === "topo"
-          ? `https://${"abc"[(xx + ty) % 3]}.tile.opentopomap.org/${z}/${xx}/${ty}.png`
-          : tiles.basemap === "osm"
-            ? `https://tile.openstreetmap.org/${z}/${xx}/${ty}.png`
-            : ESRI.replace("{z}", z).replace("{x}", xx).replace("{y}", ty);
-      jobs.push(
-        // zuerst über die Luftbildquelle des 3D-Globus (funktioniert dort nachweislich), sonst Esri direkt
-        (tiles.source ? tiles.source(xx, ty, z, tiles.diag) : Promise.resolve(null))
-          .then((im) => {
-            if (im) return im;
-            return loadImg(url).then((e) => {
-              const ok = e && !isBlankImage(e) ? e : null;
-              if (e && !ok && !tiles.diag.errors.includes("Esri: leere Kacheln"))
-                tiles.diag.errors.push("Esri: leere Kacheln");
-              tiles.diag.esri[ok ? "ok" : "fail"]++;
-              return ok;
-            });
-          })
-          .then((im) => {
+  const src = tiles.basemap; // aerial (auto) | esri | bing | globe | topo | osm
+  if (src !== "globe")
+    for (let tx = x0; tx <= x1; tx++)
+      for (let ty = y0; ty <= y1; ty++) {
+        const n = 2 ** z;
+        const xx = ((tx % n) + n) % n;
+        let load;
+        if (src === "topo")
+          load = loadImg(`https://${"abc"[(xx + ty) % 3]}.tile.opentopomap.org/${z}/${xx}/${ty}.png`);
+        else if (src === "osm") load = loadImg(`https://tile.openstreetmap.org/${z}/${xx}/${ty}.png`);
+        else {
+          const url = ESRI.replace("{z}", z).replace("{x}", xx).replace("{y}", ty);
+          // auto: Esri (fetch) -> Bing (ion) -> Bildquelle des 3D-Globus -> Esri (<img>);
+          // sonst nur die gewählte Quelle
+          const d = tiles.diag;
+          const viaSource = (im) => (im || !tiles.source ? im : tiles.source(xx, ty, z, d, src));
+          const esriImg = (im) => im || esriTile(url, d, "img");
+          if (src === "esri") load = esriTile(url, d, "fetch").then(esriImg);
+          else if (src === "bing") load = viaSource(null);
+          else load = esriTile(url, d, "fetch").then(viaSource).then(esriImg);
+        }
+        jobs.push(
+          load.then((im) => {
             if (im) {
               oc.drawImage(im, tx * 256 - (cx - off / 2), ty * 256 - (cy - off / 2), 256, 256);
               tiles.ok++;
             } else tiles.fail++;
           }),
-      );
-    }
+        );
+      }
   const okBefore = tiles.ok,
     failBefore = tiles.fail;
   await Promise.all(jobs);
@@ -121,11 +151,17 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
   ctx.clip();
   // Ersatz: Kacheln nicht ladbar -> Aufnahme senkrecht von oben aus dem 3D-Globus (bereits kursoben)
   let captured = null;
-  if (tiles.capture && okHere < (okHere + failHere) * 0.6) {
+  const wantCapture = src === "globe" || (src === "aerial" && okHere < (okHere + failHere) * 0.6);
+  if (wantCapture && !tiles.capture) tiles.diag.errors.push("Globus-Aufnahme: 3D-Globus nicht aktiv");
+  if (wantCapture && tiles.capture) {
     captured = await tiles.capture(center, courseDeg, rect.w * mpp, rect.h * mpp).catch((e) => {
       tiles.diag.errors.push(`Globus-Aufnahme: ${e?.message || e}`);
       return null;
     });
+    if (captured && isBlankImage(captured.canvas)) {
+      if (!tiles.diag.errors.includes("Globus-Aufnahme leer")) tiles.diag.errors.push("Globus-Aufnahme leer");
+      tiles.diag.captureBlank = (tiles.diag.captureBlank || 0) + 1;
+    }
   }
   if (!tiles.alive()) {
     ctx.restore();
@@ -346,7 +382,7 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
 async function renderPlateInner(canvas, P, onStatus, alive) {
   placed = [];
   const basemap = P.basemap || "aerial";
-  const aerial = basemap === "aerial";
+  const aerial = basemap !== "topo" && basemap !== "osm";
   const tiles = {
     alive,
     basemap,
@@ -355,7 +391,7 @@ async function renderPlateInner(canvas, P, onStatus, alive) {
     maxZoom: basemap === "topo" ? 17 : Math.min(19, P.maxZoom || 19),
     ok: 0,
     fail: 0,
-    diag: { globe: { ok: 0, fail: 0 }, bing: { ok: 0, fail: 0 }, esri: { ok: 0, fail: 0 }, errors: [] },
+    diag: { globe: { ok: 0, fail: 0 }, bing: { ok: 0, fail: 0 }, esri: { fetch: { ok: 0, fail: 0 }, img: { ok: 0, fail: 0 } }, errors: [] },
   };
   canvas.width = PLATE_W;
   canvas.height = PLATE_H;
@@ -574,9 +610,10 @@ async function renderPlateInner(canvas, P, onStatus, alive) {
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
   ctx.fillText(
-    `${aerial ? "Luftbild: Bing/Esri" : basemap === "topo" ? "Karte: © OpenTopoMap (CC-BY-SA), © OpenStreetMap" : "Karte: © OpenStreetMap-Mitwirkende"} · Hindernisse: © OpenStreetMap · IP2TGT – nicht für reale Einsatzplanung`,
+    `${aerial ? `Luftbild: ${{ esri: "Esri", bing: "Bing", globe: "3D-Globus" }[basemap] || "Bing/Esri"}` : basemap === "topo" ? "Karte: © OpenTopoMap (CC-BY-SA), © OpenStreetMap" : "Karte: © OpenStreetMap-Mitwirkende"} · Hindernisse: © OpenStreetMap · IP2TGT – nicht für reale Einsatzplanung`,
     PLATE_W - 10,
     PLATE_H - 6,
   );
-  return { tilesOk: tiles.ok + (tiles.diag.capture || 0) * 1000, tilesFailed: tiles.fail, diag: tiles.diag };
+  const capOk = (tiles.diag.capture || 0) - (tiles.diag.captureBlank || 0);
+  return { tilesOk: tiles.ok + capOk * 1000, tilesFailed: tiles.fail, diag: tiles.diag, aerial };
 }

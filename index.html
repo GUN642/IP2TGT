@@ -19,7 +19,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=16" rel="stylesheet" />
+    <link href="css/style.css?v=17" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -46,7 +46,7 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v16</span></p>
+          <p>Hubschrauber-Anflugsimulator · <span class="ver">v17</span></p>
         </div>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
       </header>
@@ -200,7 +200,10 @@
           <label class="field"
             ><span>Kartenhintergrund</span
             ><select id="plMap">
-              <option value="aerial">Luftbild</option>
+              <option value="aerial">Luftbild (automatisch)</option>
+              <option value="esri">Luftbild Esri</option>
+              <option value="bing">Luftbild Bing (Cesium ion)</option>
+              <option value="globe">Luftbild aus 3D-Globus (Aufnahme)</option>
               <option value="topo">Topografisch (OpenTopoMap)</option>
               <option value="osm">OpenStreetMap</option>
             </select></label
@@ -442,7 +445,10 @@
       <div class="map-head">
         <b class="plate-title">Target Approach Plate</b>
         <select id="plMapDlg" class="plate-map" title="Kartenhintergrund">
-          <option value="aerial">Luftbild</option>
+          <option value="aerial">Luftbild (auto)</option>
+          <option value="esri">Luftbild Esri</option>
+          <option value="bing">Luftbild Bing</option>
+          <option value="globe">Luftbild 3D-Globus</option>
           <option value="topo">Topo</option>
           <option value="osm">OSM</option>
         </select>
@@ -504,6 +510,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=16"></script>
+    <script type="module" src="js/app.js?v=17"></script>
   </body>
 </html>

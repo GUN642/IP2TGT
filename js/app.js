@@ -1,17 +1,17 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=16";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=16";
-import { getHelicopterDef } from "./models.js?v=16";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=16";
-import { VisualMode } from "./nvg.js?v=16";
-import { Hud } from "./hud.js?v=16";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=16";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=16";
-import { loadObstacles } from "./obstacles.js?v=16";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=16";
-import { renderPlate } from "./plate.js?v=16";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=16";
+import * as geo from "./geo.js?v=17";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=17";
+import { getHelicopterDef } from "./models.js?v=17";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=17";
+import { VisualMode } from "./nvg.js?v=17";
+import { Hud } from "./hud.js?v=17";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=17";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=17";
+import { loadObstacles } from "./obstacles.js?v=17";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=17";
+import { renderPlate } from "./plate.js?v=17";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=17";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -925,6 +925,7 @@ async function makePlate() {
       },
     };
     $("plateDlg").showModal();
+    pauseRendering(true);
     // Luftbild-Kacheln: Quelle des 3D-Globus, sonst Bing über Cesium ion, sonst (in plate.js) Esri direkt
     const prov = viewer.imageryLayers.length ? viewer.imageryLayers.get(0).imageryProvider : null;
     const globeOk = prov && prov.tilingScheme instanceof Cesium.WebMercatorTilingScheme;
@@ -933,14 +934,14 @@ async function makePlate() {
     };
     // Reihenfolge: Bing (Cesium ion) -> Bildquelle des Globus -> (plate.js) Esri direkt.
     // Einfarbige Kacheln (z. B. Sperrbilder eines Proxys) gelten als Fehlschlag.
-    P.tileSource = async (x, y, z, d) => {
+    P.tileSource = async (x, y, z, d, mode) => {
       let im = await bingTile(x, y, z, (msg) => note(d, `Bing: ${msg}`));
       if (im && isBlankImage(im)) {
         note(d, "Bing: leere Kacheln");
         im = null;
       }
       d.bing[im ? "ok" : "fail"]++;
-      if (!im && globeOk && z <= (prov.maximumLevel ?? 19)) {
+      if (!im && mode === "aerial" && globeOk && z <= (prov.maximumLevel ?? 19)) {
         im = await Promise.race([
           Promise.resolve(prov.requestImage(x, y, z)),
           new Promise((_, rej) => setTimeout(() => rej(new Error("Zeitüberschreitung")), 15000)),
@@ -964,13 +965,15 @@ async function makePlate() {
     $("plMapDlg").value = cfg.plMap;
     const res = await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
     if (res.cancelled) return;
-    const dg = res.diag;
-    const diagTxt = `Luftbild-Kacheln: Globus ${dg.globe.ok}/${dg.globe.ok + dg.globe.fail}, Bing ${dg.bing.ok}/${dg.bing.ok + dg.bing.fail}, Esri ${dg.esri.ok}/${dg.esri.ok + dg.esri.fail}, Globus-Aufnahme ${dg.capture || 0}${dg.errors.length ? " · " + dg.errors.join(" · ") : ""}`;
-    console.info(diagTxt);
-    if (!res.tilesOk) osmErrors.push(`Luftbild – ${diagTxt}`);
-    $("plateStatus").textContent = osmErrors.length
-      ? `⚠ Nicht geladen: ${osmErrors.join(", ")} – bitte erneut erstellen`
-      : "";
+    const diagTxt = plateDiag(res);
+    if (diagTxt) console.info(diagTxt);
+    if (!res.tilesOk) osmErrors.push(cfg.plMap === "topo" || cfg.plMap === "osm" ? "Kartenkacheln" : "Luftbild");
+    $("plateStatus").textContent = [
+      osmErrors.length ? `⚠ Nicht geladen: ${osmErrors.join(", ")} – bitte erneut erstellen` : "",
+      diagTxt,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     plateName = `TAP_${(cfg.plLz || "LZ").replace(/[^\w-]+/g, "_")}`;
   } catch (e) {
     console.error(e);
@@ -981,6 +984,17 @@ async function makePlate() {
   }
 }
 let plateName = "TAP";
+
+/** Kurzdiagnose der Luftbildquellen für die Statuszeile (nur bei Luftbild-Hintergrund) */
+function plateDiag(res) {
+  const dg = res.diag;
+  if (!res.aerial || !dg) return "";
+  const n = (o) => (o.ok + o.fail ? `${o.ok}/${o.ok + o.fail}` : "–");
+  const parts = [`Bing ${n(dg.bing)}`, `Globus ${n(dg.globe)}`, `Esri ${n(dg.esri.fetch)}`];
+  if (dg.esri.img.ok + dg.esri.img.fail) parts.push(`Esri(img) ${n(dg.esri.img)}`);
+  if (dg.capture) parts.push(`Aufnahme ${dg.capture - (dg.captureBlank || 0)}/${dg.capture}`);
+  return `Luftbild-Kacheln: ${parts.join(", ")}${dg.errors.length ? " · " + dg.errors.join(" · ") : ""}`;
+}
 let lastPlate = null;
 
 function plateDataUrl() {
@@ -1179,6 +1193,15 @@ function project(world) {
 
 let capturing = false;
 
+// Während die Plate offen ist, rendert der 3D-Globus nicht – sonst blockiert er auf
+// schwacher Grafik (z. B. Dienst-PC/VDI ohne GPU) den Kachelabruf der Plate.
+let renderPaused = false;
+function pauseRendering(on) {
+  if (on === renderPaused) return;
+  renderPaused = on;
+  viewer.useDefaultRenderLoop = !on;
+}
+
 /**
  * Aufnahme des 3D-Globus senkrecht von oben (orthografisch, Kurs oben) für die Plate –
  * nutzt dieselben Luftbilder, die der Globus anzeigt.
@@ -1206,6 +1229,8 @@ async function captureGlobe(center, courseDeg, wM, hM) {
     }
   };
   capturing = true;
+  const loop = viewer.useDefaultRenderLoop;
+  viewer.useDefaultRenderLoop = true;
   try {
     (heli?.models || []).forEach(hide);
     hide(data.osm);
@@ -1262,6 +1287,7 @@ async function captureGlobe(center, courseDeg, wM, hM) {
     globe.enableLighting = saved.lighting;
     hidden.forEach((p) => (p.show = true));
     capturing = false;
+    viewer.useDefaultRenderLoop = loop;
   }
 }
 
@@ -1891,6 +1917,7 @@ $("routeShow").addEventListener("change", (e) => {
 
 $("startBtn").addEventListener("click", startMission);
 $("plateBtn").addEventListener("click", makePlate);
+if (![...$("plMap").options].some((o) => o.value === cfg.plMap)) cfg.plMap = "aerial";
 $("plMap").value = cfg.plMap;
 $("plMap").addEventListener("change", (e) => {
   cfg.plMap = e.target.value;
@@ -1904,9 +1931,12 @@ $("plMapDlg").addEventListener("change", async (e) => {
   $("plateStatus").textContent = "Karte wird geladen …";
   const res = await renderPlate($("plateCanvas"), lastPlate, (t) => ($("plateStatus").textContent = t));
   if (res.cancelled) return;
-  $("plateStatus").textContent = res.tilesOk ? "" : "⚠ Kartenkacheln nicht erreichbar";
+  $("plateStatus").textContent = [res.tilesOk ? "" : "⚠ Kartenkacheln nicht erreichbar", plateDiag(res)]
+    .filter(Boolean)
+    .join(" · ");
 });
 $("plateClose").addEventListener("click", () => $("plateDlg").close());
+$("plateDlg").addEventListener("close", () => pauseRendering(false));
 $("platePng").addEventListener("click", () => {
   const url = plateDataUrl();
   if (!url) return;
