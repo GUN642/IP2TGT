@@ -1,7 +1,7 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=12";
+import * as geo from "./geo.js?v=13";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -80,8 +80,14 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
       const url = ESRI.replace("{z}", z).replace("{x}", xx).replace("{y}", ty);
       jobs.push(
         // zuerst über die Luftbildquelle des 3D-Globus (funktioniert dort nachweislich), sonst Esri direkt
-        (tiles.source ? tiles.source(xx, ty, z) : Promise.resolve(null))
-          .then((im) => im || loadImg(url))
+        (tiles.source ? tiles.source(xx, ty, z, tiles.diag) : Promise.resolve(null))
+          .then((im) => {
+            if (im) return im;
+            return loadImg(url).then((e) => {
+              tiles.diag.esri[e ? "ok" : "fail"]++;
+              return e;
+            });
+          })
           .then((im) => {
             if (im) {
               oc.drawImage(im, tx * 256 - (cx - off / 2), ty * 256 - (cy - off / 2), 256, 256);
@@ -294,7 +300,13 @@ function lzClearances(P, R) {
  */
 export async function renderPlate(canvas, P, onStatus = () => {}) {
   placed = [];
-  const tiles = { source: P.tileSource || null, maxZoom: Math.min(19, P.maxZoom || 19), ok: 0, fail: 0 };
+  const tiles = {
+    source: P.tileSource || null,
+    maxZoom: Math.min(19, P.maxZoom || 19),
+    ok: 0,
+    fail: 0,
+    diag: { globe: { ok: 0, fail: 0 }, bing: { ok: 0, fail: 0 }, esri: { ok: 0, fail: 0 }, errors: [] },
+  };
   canvas.width = PLATE_W;
   canvas.height = PLATE_H;
   const ctx = canvas.getContext("2d");
@@ -516,5 +528,5 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
     PLATE_W - 10,
     PLATE_H - 6,
   );
-  return { tilesOk: tiles.ok, tilesFailed: tiles.fail };
+  return { tilesOk: tiles.ok, tilesFailed: tiles.fail, diag: tiles.diag };
 }

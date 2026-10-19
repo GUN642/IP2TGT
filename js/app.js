@@ -1,16 +1,16 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=12";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=12";
-import { getHelicopterDef } from "./models.js?v=12";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=12";
-import { VisualMode } from "./nvg.js?v=12";
-import { Hud } from "./hud.js?v=12";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=12";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=12";
-import { loadObstacles } from "./obstacles.js?v=12";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=12";
-import { renderPlate } from "./plate.js?v=12";
+import * as geo from "./geo.js?v=13";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=13";
+import { getHelicopterDef } from "./models.js?v=13";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=13";
+import { VisualMode } from "./nvg.js?v=13";
+import { Hud } from "./hud.js?v=13";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=13";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=13";
+import { loadObstacles } from "./obstacles.js?v=13";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=13";
+import { renderPlate } from "./plate.js?v=13";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -918,15 +918,40 @@ async function makePlate() {
     // Luftbild-Kacheln: Quelle des 3D-Globus, sonst Bing über Cesium ion, sonst (in plate.js) Esri direkt
     const prov = viewer.imageryLayers.length ? viewer.imageryLayers.get(0).imageryProvider : null;
     const globeOk = prov && prov.tilingScheme instanceof Cesium.WebMercatorTilingScheme;
-    P.tileSource = async (x, y, z) => {
+    const note = (d, msg) => {
+      if (d.errors.length < 3 && !d.errors.includes(msg)) d.errors.push(msg);
+    };
+    P.tileSource = async (x, y, z, d) => {
       let im = null;
-      if (globeOk && z <= (prov.maximumLevel ?? 19))
-        im = await Promise.resolve(prov.requestImage(x, y, z)).catch(() => null);
-      if (!im) im = await bingTile(x, y, z);
+      if (globeOk && z <= (prov.maximumLevel ?? 19)) {
+        im = await Promise.resolve(prov.requestImage(x, y, z)).catch((e) => {
+          note(d, `Globus: ${e?.message || e}`);
+          return null;
+        });
+        d.globe[im ? "ok" : "fail"]++;
+      }
+      if (!im) {
+        im = await bingTile(x, y, z, (msg) => note(d, `Bing: ${msg}`));
+        d.bing[im ? "ok" : "fail"]++;
+      }
+      // Cesium liefert Bildkacheln für WebGL vertikal gespiegelt (flipY) -> zurückspiegeln
+      if (im && typeof ImageBitmap !== "undefined" && im instanceof ImageBitmap) {
+        const c = document.createElement("canvas");
+        c.width = im.width;
+        c.height = im.height;
+        const g = c.getContext("2d");
+        g.translate(0, c.height);
+        g.scale(1, -1);
+        g.drawImage(im, 0, 0);
+        return c;
+      }
       return im || null;
     };
     const res = await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
-    if (!res.tilesOk) osmErrors.push("Luftbild (Kachelserver nicht erreichbar)");
+    const dg = res.diag;
+    const diagTxt = `Luftbild-Kacheln: Globus ${dg.globe.ok}/${dg.globe.ok + dg.globe.fail}, Bing ${dg.bing.ok}/${dg.bing.ok + dg.bing.fail}, Esri ${dg.esri.ok}/${dg.esri.ok + dg.esri.fail}${dg.errors.length ? " · " + dg.errors.join(" · ") : ""}`;
+    console.info(diagTxt);
+    if (!res.tilesOk) osmErrors.push(`Luftbild – ${diagTxt}`);
     $("plateStatus").textContent = osmErrors.length
       ? `⚠ Nicht geladen: ${osmErrors.join(", ")} – bitte erneut erstellen`
       : "";
@@ -941,12 +966,13 @@ async function makePlate() {
 }
 let plateName = "TAP";
 let bingProv = null;
-async function bingTile(x, y, z) {
+async function bingTile(x, y, z, onErr = () => {}) {
   try {
     if (!bingProv) bingProv = Cesium.IonImageryProvider.fromAssetId(2);
     const p = await bingProv;
     return (await p.requestImage(x, y, z)) || null;
-  } catch {
+  } catch (e) {
+    onErr(e?.message || String(e));
     return null;
   }
 }
