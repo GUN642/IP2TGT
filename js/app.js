@@ -1,16 +1,16 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=11";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=11";
-import { getHelicopterDef } from "./models.js?v=11";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=11";
-import { VisualMode } from "./nvg.js?v=11";
-import { Hud } from "./hud.js?v=11";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=11";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=11";
-import { loadObstacles } from "./obstacles.js?v=11";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=11";
-import { renderPlate } from "./plate.js?v=11";
+import * as geo from "./geo.js?v=12";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=12";
+import { getHelicopterDef } from "./models.js?v=12";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=12";
+import { VisualMode } from "./nvg.js?v=12";
+import { Hud } from "./hud.js?v=12";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=12";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=12";
+import { loadObstacles } from "./obstacles.js?v=12";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=12";
+import { renderPlate } from "./plate.js?v=12";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -60,7 +60,7 @@ const DEFAULTS = {
   descRate: 2,
   obstacles: true,
   heli: "CH53",
-  source: "standard",
+  source: "ion",
   imagery: "esri",
   quality: isMobile ? "low" : "normal",
   buildings: true,
@@ -78,6 +78,11 @@ const DEFAULTS = {
   forestHeight: 22,
 };
 const cfg = Object.assign({}, DEFAULTS, store.get("cfg", {}));
+// Einmalige Umstellung bestehender Einstellungen auf Cesium ion (Token ist eingebaut)
+if ((cfg.cfgVersion || 0) < 2) {
+  cfg.source = "ion";
+  cfg.cfgVersion = 2;
+}
 // Fest hinterlegter Cesium-ion-Token (öffentlich im Code sichtbar – im ion-Konto auf die
 // GitHub-Pages-Adresse beschränken). Ein eigener Token im Schlüssel-Dialog hat Vorrang.
 const DEFAULT_ION_TOKEN =
@@ -275,8 +280,7 @@ async function setupData() {
   } catch (e) {
     console.error(e);
     toast(`${e.message || e} – Standard-Geodaten werden verwendet.`, true, 7000);
-    cfg.source = "standard";
-    $("source").value = "standard";
+    // Auswahl bleibt erhalten; nur diese Sitzung nutzt die Standarddaten
     viewer.terrainProvider = new TerrariumTerrainProvider();
     await addImagery();
     data.source = "standard";
@@ -911,9 +915,20 @@ async function makePlate() {
       },
     };
     $("plateDlg").showModal();
-    await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
+    // Luftbild-Kacheln: Quelle des 3D-Globus, sonst Bing über Cesium ion, sonst (in plate.js) Esri direkt
+    const prov = viewer.imageryLayers.length ? viewer.imageryLayers.get(0).imageryProvider : null;
+    const globeOk = prov && prov.tilingScheme instanceof Cesium.WebMercatorTilingScheme;
+    P.tileSource = async (x, y, z) => {
+      let im = null;
+      if (globeOk && z <= (prov.maximumLevel ?? 19))
+        im = await Promise.resolve(prov.requestImage(x, y, z)).catch(() => null);
+      if (!im) im = await bingTile(x, y, z);
+      return im || null;
+    };
+    const res = await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
+    if (!res.tilesOk) osmErrors.push("Luftbild (Kachelserver nicht erreichbar)");
     $("plateStatus").textContent = osmErrors.length
-      ? `⚠ OSM-Server ausgelastet – fehlt: ${osmErrors.join(", ")} (erneut erstellen)`
+      ? `⚠ Nicht geladen: ${osmErrors.join(", ")} – bitte erneut erstellen`
       : "";
     plateName = `TAP_${(cfg.plLz || "LZ").replace(/[^\w-]+/g, "_")}`;
   } catch (e) {
@@ -925,6 +940,16 @@ async function makePlate() {
   }
 }
 let plateName = "TAP";
+let bingProv = null;
+async function bingTile(x, y, z) {
+  try {
+    if (!bingProv) bingProv = Cesium.IonImageryProvider.fromAssetId(2);
+    const p = await bingProv;
+    return (await p.requestImage(x, y, z)) || null;
+  } catch {
+    return null;
+  }
+}
 
 function plateDataUrl() {
   try {

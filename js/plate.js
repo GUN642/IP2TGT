@@ -1,7 +1,7 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=11";
+import * as geo from "./geo.js?v=12";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -49,9 +49,9 @@ const mercY = (lat, z) => {
  * Zeichnet Luftbild in rect, Mittelpunkt center, Kurs `courseDeg` zeigt nach oben,
  * Maßstab mpp (Meter pro Plate-Pixel). Liefert project(lat, lon) -> {x, y}.
  */
-async function drawMap(ctx, rect, center, courseDeg, mpp, onProgress) {
+async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
   const cos = Math.cos(center.lat * DEG);
-  let z = Math.min(19, Math.max(1, Math.ceil(Math.log2((156543.03392 * cos) / mpp))));
+  let z = Math.min(tiles.maxZoom, Math.max(1, Math.ceil(Math.log2((156543.03392 * cos) / mpp))));
   let tileMpp = (156543.03392 * cos) / 2 ** z;
   let s = tileMpp / mpp; // Plate-Pixel je Kachelpixel
   let off = Math.ceil(Math.hypot(rect.w, rect.h) / s) + 4;
@@ -76,14 +76,18 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, onProgress) {
   for (let tx = x0; tx <= x1; tx++)
     for (let ty = y0; ty <= y1; ty++) {
       const n = 2 ** z;
-      const url = ESRI.replace("{z}", z)
-        .replace("{x}", ((tx % n) + n) % n)
-        .replace("{y}", ty);
+      const xx = ((tx % n) + n) % n;
+      const url = ESRI.replace("{z}", z).replace("{x}", xx).replace("{y}", ty);
       jobs.push(
-        loadImg(url).then((im) => {
-          if (im) oc.drawImage(im, tx * 256 - (cx - off / 2), ty * 256 - (cy - off / 2));
-          onProgress && onProgress();
-        }),
+        // zuerst über die Luftbildquelle des 3D-Globus (funktioniert dort nachweislich), sonst Esri direkt
+        (tiles.source ? tiles.source(xx, ty, z) : Promise.resolve(null))
+          .then((im) => im || loadImg(url))
+          .then((im) => {
+            if (im) {
+              oc.drawImage(im, tx * 256 - (cx - off / 2), ty * 256 - (cy - off / 2), 256, 256);
+              tiles.ok++;
+            } else tiles.fail++;
+          }),
       );
     }
   await Promise.all(jobs);
@@ -114,6 +118,11 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, onProgress) {
 // Zeichenhelfer
 // ---------------------------------------------------------------------------
 
+// bereits platzierte Beschriftungen (Überlappungen vermeiden)
+let placed = [];
+const overlaps = (r) =>
+  placed.some((p) => r.x < p.x + p.w + 4 && r.x + r.w + 4 > p.x && r.y < p.y + p.h + 4 && r.y + r.h + 4 > p.y);
+
 const FONT = (px, w = 700) => `${w} ${px}px Arial, "Helvetica Neue", sans-serif`;
 
 function labelBox(ctx, text, x, y, opt = {}) {
@@ -134,6 +143,8 @@ function labelBox(ctx, text, x, y, opt = {}) {
     bx -= w;
     by -= h / 2;
   } else by -= h / 2;
+  for (let i = 0; i < 12 && overlaps({ x: bx, y: by, w, h }); i++) by += h * 0.55;
+  placed.push({ x: bx, y: by, w, h });
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.45)";
   ctx.shadowBlur = 4;
@@ -282,6 +293,8 @@ function lzClearances(P, R) {
  *      depTrue, depMag, eteSec, unit:{f,lbl}, lzDiameter, obstacles:{buildings, lzTrees, towers, points, spans} }
  */
 export async function renderPlate(canvas, P, onStatus = () => {}) {
+  placed = [];
+  const tiles = { source: P.tileSource || null, maxZoom: Math.min(19, P.maxZoom || 19), ok: 0, fail: 0 };
   canvas.width = PLATE_W;
   canvas.height = PLATE_H;
   const ctx = canvas.getContext("2d");
@@ -340,7 +353,7 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
   onStatus("Luftbild Strecke IP → TGT …");
   const mppL = L / (left.h * 0.8);
   const mid = geo.direct(P.ip.lat, P.ip.lon, ipToTgt.course1, L * 0.52);
-  const projL = await drawMap(ctx, left, mid, P.courseTrue, mppL);
+  const projL = await drawMap(ctx, left, mid, P.courseTrue, mppL, tiles);
   const ipP = projL(P.ip.lat, P.ip.lon);
   const tgtP = projL(P.tgt.lat, P.tgt.lon);
   const Y = "#ffff00";
@@ -401,7 +414,7 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
   ctx.strokeRect(ipP.x - 22, ipP.y - 22, 44, 44);
   labelBox(ctx, "IP", ipP.x - 40, ipP.y, { anchor: "right" });
   const qb = { x: ipP.x + (tgtP.x - ipP.x) * 0.22, y: ipP.y + (tgtP.y - ipP.y) * 0.22 };
-  labelBox(ctx, `${crsTxt}\n${eteTxt}`, qb.x + 34, qb.y, { size: 24 });
+  labelBox(ctx, `${crsTxt}\n${eteTxt}`, qb.x - 80, qb.y, { anchor: "right", size: 24 });
   // Hindernisse auf der Strecke (Leitungskreuzungen)
   for (const w of P.obstacles.wires || []) {
     const q = projL(w.lat, w.lon);
@@ -420,7 +433,7 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
   const viewM = Math.max(180, P.lzDiameter * 4.2);
   const mppR = viewM / right.w;
   const center = geo.direct(P.tgt.lat, P.tgt.lon, P.courseTrue, viewM * 0.06);
-  const projR = await drawMap(ctx, right, center, P.courseTrue, mppR);
+  const projR = await drawMap(ctx, right, center, P.courseTrue, mppR, tiles);
   const c = projR(P.tgt.lat, P.tgt.lon);
   const rPx = R / mppR;
   // Anflug von unten
@@ -454,7 +467,10 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
       o = projR(cl.obj.lat, cl.obj.lon);
     if (o.x < right.x || o.x > right.x + right.w || o.y < right.y || o.y > right.y + right.h) continue;
     line(ctx, e, o, RED, 2.5, true, true);
-    labelBox(ctx, `${Math.round(cl.clr)} m`, (e.x + o.x) / 2, (e.y + o.y) / 2 - 22, {
+    const dl = Math.hypot(o.x - e.x, o.y - e.y) || 1;
+    const lx = o.x + ((o.x - e.x) / dl) * 40,
+      ly = o.y + ((o.y - e.y) / dl) * 30;
+    labelBox(ctx, `${Math.round(cl.clr)} m`, lx, ly, {
       anchor: "center",
       bg: RED,
       fg: "#fff",
@@ -500,4 +516,5 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
     PLATE_W - 10,
     PLATE_H - 6,
   );
+  return { tilesOk: tiles.ok, tilesFailed: tiles.fail };
 }
