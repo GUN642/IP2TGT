@@ -3,8 +3,8 @@
 // Windkraftanlagen, Wald/Gehölz sowie Einzelbäume und Baumreihen.
 // Höhen: OSM-Tag "height" wo erfasst, sonst typische Werte (als "geschätzt" markiert).
 
-import { overpassQuery, parseNum } from "./buildings.js?v=10";
-import { treeChunkGlb } from "./models.js?v=10";
+import { overpassQuery, parseNum } from "./buildings.js?v=11";
+import { treeChunkGlb } from "./models.js?v=11";
 
 const Cesium = window.Cesium;
 const DEG = Math.PI / 180;
@@ -607,6 +607,17 @@ export async function loadObstacles(scene, m, o) {
       });
   }
   result.hazards.sort((a, b) => a.s - b.s);
+
+  // Daten für die Approach Plate (Zeichnung + Abstandsmaße an der LZ)
+  result.plate = {
+    towers: towerList.map((t) => ({ lat: t.lat, lon: t.lon, h: t.h, est: t.est })),
+    points: pts.map((p) => ({ lat: p.lat, lon: p.lon, h: p.spec.top, est: p.spec.est, label: p.spec.label })),
+    spans: spans.map((sp) => ({ a: { lat: sp.a.lat, lon: sp.a.lon }, b: { lat: sp.b.lat, lon: sp.b.lon } })),
+    wires: wireCross.map((w) => ({ lat: w.lat, lon: w.lon, agl: w.top - w.ground, est: w.est })),
+    lzTrees: trees
+      .filter((t) => Math.hypot(t.u - L, t.v) < 300 && t.lat != null)
+      .map((t) => ({ lat: t.lat, lon: t.lon, h: t.h, conifer: t.conifer })),
+  };
 
   // --------------------------- Höhenprofil ---------------------------
   // Raster der Baumkronen (10 m Zellen)

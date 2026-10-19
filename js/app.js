@@ -1,15 +1,16 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=10";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=10";
-import { getHelicopterDef } from "./models.js?v=10";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=10";
-import { VisualMode } from "./nvg.js?v=10";
-import { Hud } from "./hud.js?v=10";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=10";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=10";
-import { loadObstacles } from "./obstacles.js?v=10";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=10";
+import * as geo from "./geo.js?v=11";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=11";
+import { getHelicopterDef } from "./models.js?v=11";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=11";
+import { VisualMode } from "./nvg.js?v=11";
+import { Hud } from "./hud.js?v=11";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=11";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=11";
+import { loadObstacles } from "./obstacles.js?v=11";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=11";
+import { renderPlate } from "./plate.js?v=11";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -65,12 +66,24 @@ const DEFAULTS = {
   buildings: true,
   shadows: true,
   routeShow: true,
+  plLz: "LZ",
+  plCallsign: "",
+  plSequence: "",
+  plAlternate: "",
+  plDiameter: 60,
+  plDep: "",
+  plRemarks: "",
   trees: true,
   obstShow: true,
   forestHeight: 22,
 };
 const cfg = Object.assign({}, DEFAULTS, store.get("cfg", {}));
-const keys = { ion: store.get("ionToken", ""), google: store.get("googleKey", "") };
+// Fest hinterlegter Cesium-ion-Token (öffentlich im Code sichtbar – im ion-Konto auf die
+// GitHub-Pages-Adresse beschränken). Ein eigener Token im Schlüssel-Dialog hat Vorrang.
+const DEFAULT_ION_TOKEN =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IktxNERkWWJCSElNMTQ1eVMiLCJqdGkiOiJiOGY1NWVkMi1lZjI4LTRhNzgtYjgzMy1hYTVmY2Q2MDQzMWIiLCJpZCI6NTMwMDM4LCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3OTI0MDE1NjN9.Vw5M193t72Yn1dDU4-MhxNWOgt-T33aMk8hyzvnYCAA";
+const userIonToken = store.get("ionToken", "");
+const keys = { ion: userIonToken || DEFAULT_ION_TOKEN, google: store.get("googleKey", "") };
 
 // Mission aus URL-Hash (teilbarer Link)
 (function readHash() {
@@ -526,6 +539,8 @@ function saveInputs() {
   cfg.descRate = readNumber("descRate", cfg.descRate);
   cfg.obstacles = $("obstacles").checked;
   cfg.forestHeight = readNumber("forestHeight", cfg.forestHeight);
+  for (const k of ["plLz", "plCallsign", "plSequence", "plAlternate", "plDep", "plRemarks"]) cfg[k] = $(k).value;
+  cfg.plDiameter = readNumber("plDiameter", cfg.plDiameter);
   saveCfg();
 }
 
@@ -747,7 +762,17 @@ async function sampleGroundForMission(m, pts, onStatus) {
 
 let obstKey = null;
 async function loadMissionObstacles(m, N, trees, onStatus) {
-  const key = [m.start.lat, m.start.lon, m.tgt.lat, m.tgt.lon, trees, cfg.obstShow, cfg.forestHeight, data.source]
+  const key = [
+    m.start.lat,
+    m.start.lon,
+    m.tgt.lat,
+    m.tgt.lon,
+    trees,
+    cfg.obstShow,
+    cfg.forestHeight,
+    data.source,
+    Math.round(N),
+  ]
     .map(String)
     .join(",");
   if (obstKey === key && data.obst) return;
@@ -822,6 +847,92 @@ async function loadStandardBuildings(m, onStatus) {
     data.osm.show = cfg.buildings;
   }
   osmKey = key;
+}
+
+// ---------------------------------------------------------------------------
+// Target Approach Plate
+// ---------------------------------------------------------------------------
+
+async function makePlate() {
+  saveInputs();
+  const m = computeMission();
+  if (!m.ok) return toast(m.error || "Eingaben prüfen", true);
+  $("plateBtn").disabled = true;
+  try {
+    loading("Approach Plate", "OSM-Hindernisse werden geladen …");
+    if (data.source !== cfg.source) await setupData();
+    osmErrors = [];
+    const status = (t) => loading(null, t);
+    try {
+      await loadStandardBuildings(m, status);
+      if (data.osm) data.osm.show = data.source === "standard" && cfg.buildings;
+    } catch (e) {
+      console.warn(e);
+      osmErrors.push("Gebäude");
+    }
+    try {
+      await loadMissionObstacles(m, sim.geoidN || 0, cfg.trees && data.source !== "google", status);
+    } catch (e) {
+      console.warn(e);
+      osmErrors.push("Hindernisse/Bäume");
+    }
+    loading(null, "Elevation …");
+    const [elev] = await sampleTerrarium([m.tgt], 14);
+    loading(false);
+    const depIn = parseFloat(cfg.plDep);
+    const depMag = isFinite(depIn) ? depIn : m.courseMag;
+    const ob = data.obst?.plate || {};
+    const P = {
+      header: {
+        callsign: cfg.plCallsign,
+        sequence: cfg.plSequence,
+        alternate: cfg.plAlternate,
+        lz: cfg.plLz || "LZ",
+        grid: geo.toMgrs(m.tgt.lat, m.tgt.lon),
+        elev: `${Math.round(elev / FT)} ft`,
+        remarks: cfg.plRemarks,
+      },
+      tgt: m.tgt,
+      ip: m.ip,
+      courseTrue: m.courseTrue,
+      courseMag: m.courseMag,
+      depMag,
+      depTrue: geo.norm360(depMag + m.variation),
+      eteSec: (m.dist - m.decel) / m.gs + (2 * m.decel) / m.gs,
+      unit: UNIT(),
+      lzDiameter: Math.max(10, cfg.plDiameter || 60),
+      obstacles: {
+        buildings: data.osmFootprints || [],
+        lzTrees: ob.lzTrees || [],
+        towers: ob.towers || [],
+        points: ob.points || [],
+        spans: ob.spans || [],
+        wires: ob.wires || [],
+      },
+    };
+    $("plateDlg").showModal();
+    await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
+    $("plateStatus").textContent = osmErrors.length
+      ? `⚠ OSM-Server ausgelastet – fehlt: ${osmErrors.join(", ")} (erneut erstellen)`
+      : "";
+    plateName = `TAP_${(cfg.plLz || "LZ").replace(/[^\w-]+/g, "_")}`;
+  } catch (e) {
+    console.error(e);
+    loading(false);
+    toast("Plate konnte nicht erstellt werden: " + (e.message || e), true, 7000);
+  } finally {
+    $("plateBtn").disabled = false;
+  }
+}
+let plateName = "TAP";
+
+function plateDataUrl() {
+  try {
+    return $("plateCanvas").toDataURL("image/png");
+  } catch {
+    toast("Export nicht möglich (Luftbild-Server erlaubt keinen Export).", true);
+    return null;
+  }
 }
 
 async function startMission() {
@@ -1466,6 +1577,10 @@ $("routeShow").checked = cfg.routeShow;
 $("trees").checked = cfg.trees;
 $("obstShow").checked = cfg.obstShow;
 $("forestHeight").value = cfg.forestHeight;
+for (const k of ["plLz", "plCallsign", "plSequence", "plAlternate", "plDiameter", "plDep", "plRemarks"]) {
+  $(k).value = cfg[k];
+  $(k).addEventListener("change", saveInputs);
+}
 
 function bindSlider(rangeId, numId, key) {
   const r = $(rangeId),
@@ -1609,6 +1724,36 @@ $("routeShow").addEventListener("change", (e) => {
 });
 
 $("startBtn").addEventListener("click", startMission);
+$("plateBtn").addEventListener("click", makePlate);
+$("plateClose").addEventListener("click", () => $("plateDlg").close());
+$("platePng").addEventListener("click", () => {
+  const url = plateDataUrl();
+  if (!url) return;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${plateName}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+$("platePrint").addEventListener("click", () => {
+  const url = plateDataUrl();
+  if (!url) return;
+  const fr = document.createElement("iframe");
+  fr.style.cssText = "position:fixed;width:0;height:0;border:0;right:0;bottom:0";
+  document.body.appendChild(fr);
+  const d = fr.contentDocument;
+  d.open();
+  d.write(
+    `<!doctype html><html><head><title>${plateName}</title><style>@page{size:A4 landscape;margin:6mm}html,body{margin:0}img{width:100%;display:block}</style></head><body><img src="${url}"></body></html>`,
+  );
+  d.close();
+  fr.contentWindow.onload = () => {
+    fr.contentWindow.focus();
+    fr.contentWindow.print();
+    setTimeout(() => fr.remove(), 60000);
+  };
+});
 $("previewBtn").addEventListener("click", () => {
   mission = computeMission();
   if (!mission.ok) return toast(mission.error, true);
@@ -1640,7 +1785,7 @@ $("shareBtn").addEventListener("click", async () => {
   }
 });
 $("keysBtn").addEventListener("click", () => {
-  $("ionToken").value = keys.ion;
+  $("ionToken").value = userIonToken;
   $("googleKey").value = keys.google;
   $("keysDlg").showModal();
 });

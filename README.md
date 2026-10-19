@@ -21,6 +21,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
   3. Kurz vor der LZ (Standard 0,5 NM): Verzögerung mit Flare, Sinkflug in den Hover über der LZ
   4. Hover (10 ft) und Aufsetzen bis zum Boden
 - **Hindernisse & Vegetation (OpenStreetMap, alle Datenquellen):** Freileitungen mit Masten und Leiterseilen (inkl. Durchhang), Sende-/Funkmasten, Türme, Schornsteine, Windkraftanlagen, Wald/Gehölz sowie Einzelbäume und Baumreihen als 3D-Objekte. Höhen stammen aus dem OSM-Tag `height`, sonst aus typischen Werten (Masten nach Spannungsebene, Waldhöhe einstellbar, Standard 22 m) – geschätzte Höhen sind im HUD mit `~` markiert. Hindernisse werden im Höhenprofil überflogen; das HUD warnt vor Leitungen und Hindernissen voraus (⚠, Λ-Symbol mit Höhe über Grund). Mit Google 3D Tiles sind Bäume/Bewuchs bereits fotorealistisch im Modell enthalten.
+- **Target Approach Plate** (Knopf „📄 Approach Plate erstellen“): Kopfzeile CALLSIGN / SEQUENCE / ALTERNATE LZ / LZ / GRID / ELEV / REMARKS, links Strecke IP→TGT (Kurs oben) mit Distanzmarken, Kurs/Zeit und Abflugkurs, rechts LZ-Detail mit LZ-Kreis, An-/Abflug und automatischen Abstandsmaßen zu Gebäuden, Bäumen, Masten und Leitungen. Export als PNG oder Drucken/PDF (A4 quer).
 - **Hubschrauber:** CH-53G (6-Blatt-Hauptrotor, Heckrotor) oder CH-47F (Tandemrotor), mit drehenden Rotoren.
 - **Ansichten:** Cockpit (rechter Pilotensitz, Umsehen mit der Maus), Außen (Orbit), Beobachter an der LZ, freie Kamera.
 - **HUD** mit Kursband, Kurs-Bug zum TGT, GS, Radarhöhe, MSL-Höhe, Steig-/Sinkrate, Horizont/Nicklage, Flugbahnvektor, LZ- und IP-Markern, Distanz und ETE.
@@ -32,7 +33,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 | Quelle | Luftbild | Gelände | 3D-Gebäude | Schlüssel |
 |---|---|---|---|---|
 | **Standard** | Esri World Imagery | AWS Terrain Tiles (Terrarium) | OpenStreetMap via Overpass (extrudiert) | keiner |
-| **Cesium ion** | Esri oder Bing Maps Aerial | Cesium World Terrain | Cesium OSM Buildings | [Cesium-ion-Token](https://ion.cesium.com/tokens) (kostenlos) |
+| **Cesium ion** | Esri oder Bing Maps Aerial | Cesium World Terrain | Cesium OSM Buildings | eingebauter Token (eigener Token optional) |
 | **Google 3D** | Google Photorealistic 3D Tiles (Gelände, Gebäude, Bewuchs in einem Mesh) | | | Google-Maps-API-Key (Map Tiles API) **oder** ion-Token |
 
 Schlüssel werden über „🔑 API-Schlüssel“ eingegeben und nur lokal im Browser (localStorage) gespeichert.
@@ -73,6 +74,7 @@ js/flight.js        Höhenprofil (Geländefolge), Trajektorie (Verzögerung, Hov
 js/terrain.js       Cesium-TerrainProvider für AWS Terrarium-Kacheln + Höhen-Sampler
 js/buildings.js     OSM-Gebäude via Overpass (Extrusion, Hindernishöhen)
 js/obstacles.js     Leitungen, Masten, Windräder, Wald/Bäume (OSM), Hindernisprofil & HUD-Warnungen
+js/plate.js         Target Approach Plate (Canvas, PNG/PDF-Export)
 js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position
 js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F (GLB im Speicher)
 js/hud.js           HUD-Symbologie

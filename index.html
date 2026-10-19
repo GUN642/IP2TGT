@@ -19,7 +19,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=10" rel="stylesheet" />
+    <link href="css/style.css?v=11" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -46,7 +46,7 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v10</span></p>
+          <p>Hubschrauber-Anflugsimulator · <span class="ver">v11</span></p>
         </div>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
       </header>
@@ -168,6 +168,36 @@
             <div class="coord-meta" id="ipDerived"></div>
           </div>
           <div class="summary" id="summary"></div>
+        </section>
+
+        <section>
+          <h2>Target Approach Plate</h2>
+          <div class="grid2">
+            <label class="field"
+              ><span>LZ-Name</span><input id="plLz" type="text" placeholder="z. B. LZ EAGLE"
+            /></label>
+            <label class="field"
+              ><span>Callsign</span><input id="plCallsign" type="text" placeholder="z. B. HAWK 11"
+            /></label>
+            <label class="field"
+              ><span>Sequence</span><input id="plSequence" type="text" placeholder="z. B. 1 / 2"
+            /></label>
+            <label class="field"
+              ><span>Alternate LZ</span><input id="plAlternate" type="text" placeholder="z. B. LZ FALCON"
+            /></label>
+            <label class="field"
+              ><span>LZ-Durchmesser (m)</span
+              ><input id="plDiameter" type="number" min="10" max="400" step="5" value="60"
+            /></label>
+            <label class="field"
+              ><span>Abflugkurs (°M, leer = wie Anflug)</span
+              ><input id="plDep" type="number" min="0" max="360" step="1" placeholder="—"
+            /></label>
+          </div>
+          <label class="field"
+            ><span>Remarks</span><input id="plRemarks" type="text" placeholder="z. B. Hochspannungsleitung N"
+          /></label>
+          <button id="plateBtn" class="btn ghost wide">📄 Approach Plate erstellen</button>
         </section>
 
         <section>
@@ -358,7 +388,12 @@
             >Cesium ion Access Token
             <a href="https://ion.cesium.com/tokens" target="_blank" rel="noopener">(kostenlos erstellen)</a></span
           >
-          <input id="ionToken" type="password" autocomplete="off" placeholder="eyJhbGciOi…" />
+          <input
+            id="ionToken"
+            type="password"
+            autocomplete="off"
+            placeholder="leer = eingebauter Token wird verwendet"
+          />
         </label>
         <label class="field">
           <span
@@ -378,6 +413,18 @@
           <button id="keysSave" value="save" class="btn primary">Speichern &amp; neu laden</button>
         </menu>
       </form>
+    </dialog>
+
+    <dialog id="plateDlg" class="glass plate-dlg">
+      <div class="map-head">
+        <b class="plate-title">Target Approach Plate</b>
+        <span class="muted small" id="plateStatus"></span>
+        <span class="spacer"></span>
+        <button id="platePng" class="icon-btn" title="Als PNG speichern">⬇ PNG</button>
+        <button id="platePrint" class="icon-btn" title="Drucken / als PDF speichern">🖨 Drucken / PDF</button>
+        <button id="plateClose" class="icon-btn" title="Schließen">✕</button>
+      </div>
+      <div class="plate-wrap"><canvas id="plateCanvas"></canvas></div>
     </dialog>
 
     <dialog id="mapDlg" class="glass map-dlg">
@@ -429,6 +476,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=10"></script>
+    <script type="module" src="js/app.js?v=11"></script>
   </body>
 </html>

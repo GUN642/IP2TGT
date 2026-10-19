@@ -1033,3 +1033,46 @@ dialog.map-dlg[open] {
   color: var(--accent);
   opacity: 0.8;
 }
+
+/* ---------- Approach Plate ---------- */
+.btn.wide {
+  width: 100%;
+  margin-top: 4px;
+}
+dialog.plate-dlg {
+  padding: 0;
+  width: min(1400px, calc(100vw - 24px));
+  height: min(980px, calc(100dvh - 24px));
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+dialog.plate-dlg[open] {
+  display: flex;
+  flex-direction: column;
+}
+.plate-title {
+  font:
+    800 15px "JetBrains Mono",
+    monospace;
+}
+.spacer {
+  flex: 1;
+}
+.plate-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d1117;
+}
+#plateCanvas {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
