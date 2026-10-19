@@ -1,16 +1,16 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=13";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=13";
-import { getHelicopterDef } from "./models.js?v=13";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=13";
-import { VisualMode } from "./nvg.js?v=13";
-import { Hud } from "./hud.js?v=13";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=13";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=13";
-import { loadObstacles } from "./obstacles.js?v=13";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=13";
-import { renderPlate } from "./plate.js?v=13";
+import * as geo from "./geo.js?v=14";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=14";
+import { getHelicopterDef } from "./models.js?v=14";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=14";
+import { VisualMode } from "./nvg.js?v=14";
+import { Hud } from "./hud.js?v=14";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=14";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=14";
+import { loadObstacles } from "./obstacles.js?v=14";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=14";
+import { renderPlate } from "./plate.js?v=14";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -947,9 +947,10 @@ async function makePlate() {
       }
       return im || null;
     };
+    if (globe.show) P.capture = captureGlobe;
     const res = await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
     const dg = res.diag;
-    const diagTxt = `Luftbild-Kacheln: Globus ${dg.globe.ok}/${dg.globe.ok + dg.globe.fail}, Bing ${dg.bing.ok}/${dg.bing.ok + dg.bing.fail}, Esri ${dg.esri.ok}/${dg.esri.ok + dg.esri.fail}${dg.errors.length ? " · " + dg.errors.join(" · ") : ""}`;
+    const diagTxt = `Luftbild-Kacheln: Globus ${dg.globe.ok}/${dg.globe.ok + dg.globe.fail}, Bing ${dg.bing.ok}/${dg.bing.ok + dg.bing.fail}, Esri ${dg.esri.ok}/${dg.esri.ok + dg.esri.fail}, Globus-Aufnahme ${dg.capture || 0}${dg.errors.length ? " · " + dg.errors.join(" · ") : ""}`;
     console.info(diagTxt);
     if (!res.tilesOk) osmErrors.push(`Luftbild – ${diagTxt}`);
     $("plateStatus").textContent = osmErrors.length
@@ -1162,7 +1163,96 @@ function project(world) {
   return { x: w / 2 + (f * x) / z, y: h / 2 - (f * y) / z, visible: true };
 }
 
+let capturing = false;
+
+/**
+ * Aufnahme des 3D-Globus senkrecht von oben (orthografisch, Kurs oben) für die Plate –
+ * nutzt dieselben Luftbilder, die der Globus anzeigt.
+ */
+async function captureGlobe(center, courseDeg, wM, hM) {
+  const cam = camera;
+  const saved = {
+    frustum: cam.frustum.clone(),
+    pos: cam.positionWC.clone(),
+    dir: cam.directionWC.clone(),
+    up: cam.upWC.clone(),
+    fog: scene.fog.enabled,
+    atmo: globe.showGroundAtmosphere,
+    sky: scene.skyAtmosphere ? scene.skyAtmosphere.show : false,
+    nvg: visual.stage.enabled,
+    shadows: viewer.shadows,
+    entities: viewer.entities.show,
+    lighting: globe.enableLighting,
+  };
+  const hidden = [];
+  const hide = (p) => {
+    if (p && p.show) {
+      p.show = false;
+      hidden.push(p);
+    }
+  };
+  capturing = true;
+  try {
+    (heli?.models || []).forEach(hide);
+    hide(data.osm);
+    hide(data.tileset);
+    (data.obst?.primitives || []).forEach(hide);
+    viewer.entities.show = false;
+    scene.fog.enabled = false;
+    globe.showGroundAtmosphere = false;
+    if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
+    visual.stage.enabled = false;
+    viewer.shadows = false;
+    globe.enableLighting = false;
+    const W = scene.canvas.width,
+      H = scene.canvas.height;
+    const aspect = W / H;
+    const width = Math.max(wM, hM * aspect) * 1.03;
+    cam.frustum = new Cesium.OrthographicFrustum({ width, aspectRatio: aspect, near: 1, far: 1e7 });
+    const [g] = await sampleTerrarium([center], 12).catch(() => [500]);
+    cam.setView({
+      destination: Cesium.Cartesian3.fromDegrees(center.lon, center.lat, (g || 0) + 5000),
+      orientation: { heading: courseDeg * DEG, pitch: -Math.PI / 2, roll: 0 },
+    });
+    await new Promise((resolve) => {
+      const t0 = performance.now();
+      let calm = 0;
+      const tick = () => {
+        calm = globe.tilesLoaded ? calm + 1 : 0;
+        if ((calm > 10 && performance.now() - t0 > 800) || performance.now() - t0 > 25000) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    const shot = await new Promise((resolve) => {
+      const remove = scene.postRender.addEventListener(() => {
+        remove();
+        const c = document.createElement("canvas");
+        c.width = W;
+        c.height = H;
+        c.getContext("2d").drawImage(scene.canvas, 0, 0);
+        resolve(c);
+      });
+      scene.requestRender();
+    });
+    return { canvas: shot, mpp: width / W };
+  } finally {
+    cam.frustum = saved.frustum;
+    cam.setView({ destination: saved.pos, orientation: { direction: saved.dir, up: saved.up } });
+    scene.fog.enabled = saved.fog;
+    globe.showGroundAtmosphere = saved.atmo;
+    if (scene.skyAtmosphere) scene.skyAtmosphere.show = saved.sky;
+    visual.stage.enabled = saved.nvg;
+    viewer.shadows = saved.shadows;
+    viewer.entities.show = saved.entities;
+    globe.enableLighting = saved.lighting;
+    hidden.forEach((p) => (p.show = true));
+    capturing = false;
+  }
+}
+
 function updateCamera(st, mats) {
+  if (capturing) return;
   const v = sim.view;
   if (v === "free") return;
   if (v === "cockpit") {
@@ -1263,6 +1353,7 @@ scene.preUpdate.addEventListener(() => {
   const inCockpit = sim.view === "cockpit";
   heli.body.show = !inCockpit;
   heli.rotors.forEach((r) => (r.show = !inCockpit));
+  if (capturing) heli.models.forEach((m) => (m.show = false));
   updateCamera(st, mats);
 
   // Steig-/Sinkrate (gefiltert)

@@ -1,6 +1,6 @@
 // HUD-Symbologie (an ANVIS/HUD- bzw. DNVS-Darstellungen angelehnt) auf einem 2D-Canvas.
 
-import { fmtCourse, fmtTime, norm180, NM, FT, KT } from "./geo.js?v=13";
+import { fmtCourse, fmtTime, norm180, NM, FT, KT } from "./geo.js?v=14";
 
 export class Hud {
   constructor(canvas) {

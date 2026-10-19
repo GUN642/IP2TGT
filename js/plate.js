@@ -1,7 +1,7 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=13";
+import * as geo from "./geo.js?v=14";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -96,7 +96,11 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
           }),
       );
     }
+  const okBefore = tiles.ok,
+    failBefore = tiles.fail;
   await Promise.all(jobs);
+  const okHere = tiles.ok - okBefore,
+    failHere = tiles.fail - failBefore;
 
   const a = -courseDeg * DEG;
   const mx = rect.x + rect.w / 2,
@@ -105,10 +109,26 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
   ctx.beginPath();
   ctx.rect(rect.x, rect.y, rect.w, rect.h);
   ctx.clip();
-  ctx.translate(mx, my);
-  ctx.rotate(a);
-  ctx.scale(s, s);
-  ctx.drawImage(canvas, -off / 2, -off / 2);
+  // Ersatz: Kacheln nicht ladbar -> Aufnahme senkrecht von oben aus dem 3D-Globus (bereits kursoben)
+  let captured = null;
+  if (tiles.capture && okHere < (okHere + failHere) * 0.6) {
+    captured = await tiles.capture(center, courseDeg, rect.w * mpp, rect.h * mpp).catch((e) => {
+      tiles.diag.errors.push(`Globus-Aufnahme: ${e?.message || e}`);
+      return null;
+    });
+  }
+  if (captured) {
+    const k = captured.mpp / mpp;
+    const cw = captured.canvas.width * k,
+      ch = captured.canvas.height * k;
+    ctx.drawImage(captured.canvas, mx - cw / 2, my - ch / 2, cw, ch);
+    tiles.diag.capture = (tiles.diag.capture || 0) + 1;
+  } else {
+    ctx.translate(mx, my);
+    ctx.rotate(a);
+    ctx.scale(s, s);
+    ctx.drawImage(canvas, -off / 2, -off / 2);
+  }
   ctx.restore();
 
   const ca = Math.cos(a),
@@ -302,6 +322,7 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
   placed = [];
   const tiles = {
     source: P.tileSource || null,
+    capture: P.capture || null,
     maxZoom: Math.min(19, P.maxZoom || 19),
     ok: 0,
     fail: 0,
@@ -528,5 +549,5 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
     PLATE_W - 10,
     PLATE_H - 6,
   );
-  return { tilesOk: tiles.ok, tilesFailed: tiles.fail, diag: tiles.diag };
+  return { tilesOk: tiles.ok + (tiles.diag.capture || 0) * 1000, tilesFailed: tiles.fail, diag: tiles.diag };
 }

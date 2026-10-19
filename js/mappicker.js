@@ -1,6 +1,6 @@
 // 2D-Kartenauswahl für TGT und IP (Leaflet): Klicken, Marker ziehen, Ortssuche, eigene GPS-Position.
 
-import * as geo from "./geo.js?v=13";
+import * as geo from "./geo.js?v=14";
 
 const LEAFLET = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/";
 const $ = (id) => document.getElementById(id);
