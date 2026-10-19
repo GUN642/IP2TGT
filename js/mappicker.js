@@ -1,6 +1,7 @@
 // 2D-Kartenauswahl für TGT und IP (Leaflet): Klicken, Marker ziehen, Ortssuche, eigene GPS-Position.
 
-import * as geo from "./geo.js?v=14";
+import * as geo from "./geo.js?v=15";
+import { bingTile } from "./imagery.js?v=15";
 
 const LEAFLET = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/";
 const $ = (id) => document.getElementById(id);
@@ -110,8 +111,26 @@ function initMap() {
     maxZoom: 19,
     attribution: "© OpenStreetMap-Mitwirkende",
   });
+  // Bing-Luftbild über Cesium ion (funktioniert auch, wo Esri gesperrt ist)
+  const BingLayer = L.GridLayer.extend({
+    createTile(coords, done) {
+      const tile = document.createElement("canvas");
+      tile.width = tile.height = 256;
+      bingTile(coords.x, coords.y, coords.z).then((im) => {
+        if (im) tile.getContext("2d").drawImage(im, 0, 0, 256, 256);
+        done(null, tile);
+      });
+      return tile;
+    },
+  });
+  const bing = new BingLayer({
+    maxZoom: 20,
+    maxNativeZoom: 19,
+    attribution: "© Microsoft Bing Maps (über Cesium ion)",
+  });
   const bases = {
-    Luftbild: L.layerGroup([esri, labels]),
+    Luftbild: L.layerGroup([bing, labels]),
+    "Luftbild (Esri)": L.layerGroup([esri, labels]),
     Topografisch: topo,
     OpenStreetMap: osm,
   };

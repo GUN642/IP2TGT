@@ -1,7 +1,8 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=14";
+import * as geo from "./geo.js?v=15";
+import { isBlankImage } from "./imagery.js?v=15";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -84,8 +85,11 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
           .then((im) => {
             if (im) return im;
             return loadImg(url).then((e) => {
-              tiles.diag.esri[e ? "ok" : "fail"]++;
-              return e;
+              const ok = e && !isBlankImage(e) ? e : null;
+              if (e && !ok && !tiles.diag.errors.includes("Esri: leere Kacheln"))
+                tiles.diag.errors.push("Esri: leere Kacheln");
+              tiles.diag.esri[ok ? "ok" : "fail"]++;
+              return ok;
             });
           })
           .then((im) => {

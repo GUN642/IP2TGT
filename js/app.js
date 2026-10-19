@@ -1,16 +1,17 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=14";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=14";
-import { getHelicopterDef } from "./models.js?v=14";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=14";
-import { VisualMode } from "./nvg.js?v=14";
-import { Hud } from "./hud.js?v=14";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=14";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=14";
-import { loadObstacles } from "./obstacles.js?v=14";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=14";
-import { renderPlate } from "./plate.js?v=14";
+import * as geo from "./geo.js?v=15";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=15";
+import { getHelicopterDef } from "./models.js?v=15";
+import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=15";
+import { VisualMode } from "./nvg.js?v=15";
+import { Hud } from "./hud.js?v=15";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=15";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=15";
+import { loadObstacles } from "./obstacles.js?v=15";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=15";
+import { renderPlate } from "./plate.js?v=15";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=15";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -921,29 +922,27 @@ async function makePlate() {
     const note = (d, msg) => {
       if (d.errors.length < 3 && !d.errors.includes(msg)) d.errors.push(msg);
     };
+    // Reihenfolge: Bing (Cesium ion) -> Bildquelle des Globus -> (plate.js) Esri direkt.
+    // Einfarbige Kacheln (z. B. Sperrbilder eines Proxys) gelten als Fehlschlag.
     P.tileSource = async (x, y, z, d) => {
-      let im = null;
-      if (globeOk && z <= (prov.maximumLevel ?? 19)) {
-        im = await Promise.resolve(prov.requestImage(x, y, z)).catch((e) => {
-          note(d, `Globus: ${e?.message || e}`);
-          return null;
-        });
+      let im = await bingTile(x, y, z, (msg) => note(d, `Bing: ${msg}`));
+      if (im && isBlankImage(im)) {
+        note(d, "Bing: leere Kacheln");
+        im = null;
+      }
+      d.bing[im ? "ok" : "fail"]++;
+      if (!im && globeOk && z <= (prov.maximumLevel ?? 19)) {
+        im = await Promise.resolve(prov.requestImage(x, y, z))
+          .then((r) => (r ? toCanvas(r) : null))
+          .catch((e) => {
+            note(d, `Globus: ${e?.message || e}`);
+            return null;
+          });
+        if (im && isBlankImage(im)) {
+          note(d, "Globus: leere Kacheln");
+          im = null;
+        }
         d.globe[im ? "ok" : "fail"]++;
-      }
-      if (!im) {
-        im = await bingTile(x, y, z, (msg) => note(d, `Bing: ${msg}`));
-        d.bing[im ? "ok" : "fail"]++;
-      }
-      // Cesium liefert Bildkacheln für WebGL vertikal gespiegelt (flipY) -> zurückspiegeln
-      if (im && typeof ImageBitmap !== "undefined" && im instanceof ImageBitmap) {
-        const c = document.createElement("canvas");
-        c.width = im.width;
-        c.height = im.height;
-        const g = c.getContext("2d");
-        g.translate(0, c.height);
-        g.scale(1, -1);
-        g.drawImage(im, 0, 0);
-        return c;
       }
       return im || null;
     };
@@ -966,17 +965,6 @@ async function makePlate() {
   }
 }
 let plateName = "TAP";
-let bingProv = null;
-async function bingTile(x, y, z, onErr = () => {}) {
-  try {
-    if (!bingProv) bingProv = Cesium.IonImageryProvider.fromAssetId(2);
-    const p = await bingProv;
-    return (await p.requestImage(x, y, z)) || null;
-  } catch (e) {
-    onErr(e?.message || String(e));
-    return null;
-  }
-}
 
 function plateDataUrl() {
   try {
