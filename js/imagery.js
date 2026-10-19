@@ -4,6 +4,8 @@
 const Cesium = window.Cesium;
 
 let bingProv = null;
+const withTimeout = (p, ms, msg) =>
+  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
 let bingDown = 0; // Zeitpunkt, bis zu dem Bing als nicht erreichbar gilt
 
 /** Bing-Luftbildkachel (Web Mercator x/y/z) als Canvas oder null */
@@ -11,7 +13,8 @@ export async function bingTile(x, y, z, onErr = () => {}) {
   if (Date.now() < bingDown) return null;
   let p;
   try {
-    if (!bingProv) bingProv = Cesium.IonImageryProvider.fromAssetId(2);
+    if (!bingProv)
+      bingProv = withTimeout(Cesium.IonImageryProvider.fromAssetId(2), 8000, "Cesium ion nicht erreichbar");
     p = await bingProv;
   } catch (e) {
     // ion nicht erreichbar: 60 s nicht erneut versuchen (sonst hunderte Wartezeiten)
@@ -21,7 +24,7 @@ export async function bingTile(x, y, z, onErr = () => {}) {
     return null;
   }
   try {
-    const im = await p.requestImage(x, y, z);
+    const im = await withTimeout(Promise.resolve(p.requestImage(x, y, z)), 15000, "Zeitüberschreitung");
     return im ? toCanvas(im) : null;
   } catch (e) {
     onErr(e?.message || String(e));

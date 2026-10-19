@@ -2,7 +2,7 @@
 // Erzeugt eine vorab berechnete Trajektorie (zeitlich abgetastet), damit
 // Pause/Spulen jederzeit deterministisch funktioniert.
 
-import { direct } from "./geo.js?v=15";
+import { direct } from "./geo.js?v=16";
 
 export const PHASES = {
   LEADIN: "ANFLUG IP",
@@ -214,4 +214,22 @@ export function buildTrajectory(p) {
       };
     },
   };
+}
+
+/**
+ * Konstanter Anflug: Höhe = LZ-Elevation + Anflughöhe, gehalten bis zur Verzögerung.
+ * Ragen Gelände/Hindernisse bis auf weniger als minClear an diese Höhe heran, wird lokal
+ * (mit begrenzter Steig-/Sinkrate aus dem Geländeprofil Gtf) darüber geflogen.
+ * Liefert ein Bodenreferenz-Profil G, so dass G + agl der geflogenen Höhe entspricht.
+ */
+export function levelProfile(Gtf, gTGT, agl, minClear) {
+  const level = gTGT + agl;
+  let maxExcess = 0;
+  const G = new Float64Array(Gtf.length);
+  for (let i = 0; i < Gtf.length; i++) {
+    const req = Gtf[i] + minClear;
+    maxExcess = Math.max(maxExcess, req - level);
+    G[i] = Math.max(level, req) - agl;
+  }
+  return { G, level, maxExcess };
 }

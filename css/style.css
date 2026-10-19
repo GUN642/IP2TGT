@@ -1076,3 +1076,7 @@ dialog.plate-dlg[open] {
   background: #fff;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
+select.plate-map {
+  width: auto;
+  padding: 8px 28px 8px 10px;
+}

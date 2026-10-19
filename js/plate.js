@@ -1,8 +1,8 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=15";
-import { isBlankImage } from "./imagery.js?v=15";
+import * as geo from "./geo.js?v=16";
+import { isBlankImage } from "./imagery.js?v=16";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -78,7 +78,12 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
     for (let ty = y0; ty <= y1; ty++) {
       const n = 2 ** z;
       const xx = ((tx % n) + n) % n;
-      const url = ESRI.replace("{z}", z).replace("{x}", xx).replace("{y}", ty);
+      const url =
+        tiles.basemap === "topo"
+          ? `https://${"abc"[(xx + ty) % 3]}.tile.opentopomap.org/${z}/${xx}/${ty}.png`
+          : tiles.basemap === "osm"
+            ? `https://tile.openstreetmap.org/${z}/${xx}/${ty}.png`
+            : ESRI.replace("{z}", z).replace("{x}", xx).replace("{y}", ty);
       jobs.push(
         // zuerst über die Luftbildquelle des 3D-Globus (funktioniert dort nachweislich), sonst Esri direkt
         (tiles.source ? tiles.source(xx, ty, z, tiles.diag) : Promise.resolve(null))
@@ -103,6 +108,7 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
   const okBefore = tiles.ok,
     failBefore = tiles.fail;
   await Promise.all(jobs);
+  if (!tiles.alive()) throw new Error("abgebrochen");
   const okHere = tiles.ok - okBefore,
     failHere = tiles.fail - failBefore;
 
@@ -120,6 +126,10 @@ async function drawMap(ctx, rect, center, courseDeg, mpp, tiles) {
       tiles.diag.errors.push(`Globus-Aufnahme: ${e?.message || e}`);
       return null;
     });
+  }
+  if (!tiles.alive()) {
+    ctx.restore();
+    throw new Error("abgebrochen");
   }
   if (captured) {
     const k = captured.mpp / mpp;
@@ -322,12 +332,27 @@ function lzClearances(P, R) {
  * P: { header:{callsign, sequence, alternate, lz, grid, elev, remarks}, tgt, ip, courseTrue, courseMag,
  *      depTrue, depMag, eteSec, unit:{f,lbl}, lzDiameter, obstacles:{buildings, lzTrees, towers, points, spans} }
  */
+let renderSeq = 0;
 export async function renderPlate(canvas, P, onStatus = () => {}) {
+  const mySeq = ++renderSeq;
+  try {
+    return await renderPlateInner(canvas, P, onStatus, () => mySeq === renderSeq);
+  } catch (e) {
+    if (mySeq !== renderSeq) return { cancelled: true, tilesOk: 1, diag: null };
+    throw e;
+  }
+}
+
+async function renderPlateInner(canvas, P, onStatus, alive) {
   placed = [];
+  const basemap = P.basemap || "aerial";
+  const aerial = basemap === "aerial";
   const tiles = {
-    source: P.tileSource || null,
-    capture: P.capture || null,
-    maxZoom: Math.min(19, P.maxZoom || 19),
+    alive,
+    basemap,
+    source: aerial ? P.tileSource || null : null,
+    capture: aerial ? P.capture || null : null,
+    maxZoom: basemap === "topo" ? 17 : Math.min(19, P.maxZoom || 19),
     ok: 0,
     fail: 0,
     diag: { globe: { ok: 0, fail: 0 }, bing: { ok: 0, fail: 0 }, esri: { ok: 0, fail: 0 }, errors: [] },
@@ -549,7 +574,7 @@ export async function renderPlate(canvas, P, onStatus = () => {}) {
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
   ctx.fillText(
-    "Luftbild: Esri, Maxar, Earthstar Geographics · Hindernisse: © OpenStreetMap · IP2TGT – nicht für reale Einsatzplanung",
+    `${aerial ? "Luftbild: Bing/Esri" : basemap === "topo" ? "Karte: © OpenTopoMap (CC-BY-SA), © OpenStreetMap" : "Karte: © OpenStreetMap-Mitwirkende"} · Hindernisse: © OpenStreetMap · IP2TGT – nicht für reale Einsatzplanung`,
     PLATE_W - 10,
     PLATE_H - 6,
   );

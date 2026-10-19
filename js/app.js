@@ -1,17 +1,17 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=15";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=15";
-import { getHelicopterDef } from "./models.js?v=15";
-import { buildTrajectory, pathPoints, smoothGroundProfile } from "./flight.js?v=15";
-import { VisualMode } from "./nvg.js?v=15";
-import { Hud } from "./hud.js?v=15";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=15";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=15";
-import { loadObstacles } from "./obstacles.js?v=15";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=15";
-import { renderPlate } from "./plate.js?v=15";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=15";
+import * as geo from "./geo.js?v=16";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=16";
+import { getHelicopterDef } from "./models.js?v=16";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=16";
+import { VisualMode } from "./nvg.js?v=16";
+import { Hud } from "./hud.js?v=16";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=16";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=16";
+import { loadObstacles } from "./obstacles.js?v=16";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=16";
+import { renderPlate } from "./plate.js?v=16";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=16";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -74,6 +74,8 @@ const DEFAULTS = {
   plDiameter: 60,
   plDep: "",
   plRemarks: "",
+  plMap: "aerial",
+  profileMode: "terrain",
   trees: true,
   obstShow: true,
   forestHeight: 22,
@@ -408,7 +410,14 @@ async function updateElevation(tgt) {
     const [h] = await sampleTerrarium([tgt], 14);
     if (seq !== elevSeq) return;
     const el = $("elevChip");
-    if (el) el.innerHTML = `<label>LZ ELEV</label>${Math.round(h / FT)} ft`;
+    if (el) {
+      el.innerHTML = `<label>LZ ELEV</label>${Math.round(h / FT)} ft`;
+      if (cfg.profileMode === "level")
+        el.insertAdjacentHTML(
+          "afterend",
+          `<span class="chip"><label>ANFLUG</label>${Math.round(h / FT + readNumber("aglNum", 100))} ft MSL konstant</span>`,
+        );
+    }
   } catch {
     const el = $("elevChip");
     if (el) el.innerHTML = `<label>LZ ELEV</label>—`;
@@ -932,7 +941,10 @@ async function makePlate() {
       }
       d.bing[im ? "ok" : "fail"]++;
       if (!im && globeOk && z <= (prov.maximumLevel ?? 19)) {
-        im = await Promise.resolve(prov.requestImage(x, y, z))
+        im = await Promise.race([
+          Promise.resolve(prov.requestImage(x, y, z)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("Zeitüberschreitung")), 15000)),
+        ])
           .then((r) => (r ? toCanvas(r) : null))
           .catch((e) => {
             note(d, `Globus: ${e?.message || e}`);
@@ -947,7 +959,11 @@ async function makePlate() {
       return im || null;
     };
     if (globe.show) P.capture = captureGlobe;
+    P.basemap = cfg.plMap;
+    lastPlate = P;
+    $("plMapDlg").value = cfg.plMap;
     const res = await renderPlate($("plateCanvas"), P, (t) => ($("plateStatus").textContent = t));
+    if (res.cancelled) return;
     const dg = res.diag;
     const diagTxt = `Luftbild-Kacheln: Globus ${dg.globe.ok}/${dg.globe.ok + dg.globe.fail}, Bing ${dg.bing.ok}/${dg.bing.ok + dg.bing.fail}, Esri ${dg.esri.ok}/${dg.esri.ok + dg.esri.fail}, Globus-Aufnahme ${dg.capture || 0}${dg.errors.length ? " · " + dg.errors.join(" · ") : ""}`;
     console.info(diagTxt);
@@ -965,6 +981,7 @@ async function makePlate() {
   }
 }
 let plateName = "TAP";
+let lastPlate = null;
 
 function plateDataUrl() {
   try {
@@ -999,8 +1016,16 @@ async function startMission() {
     loading(null, "Flugbahn wird berechnet …");
     const raw = Float64Array.from(ground.map((g, i) => Math.max(g, obstacles[i])));
     // Die LZ selbst gilt als hindernisfrei
-    const G = smoothGroundProfile(raw, ds, m.gs);
+    let G = smoothGroundProfile(raw, ds, m.gs);
     sim.gTGT = sim.gTGT0 = ground[ground.length - 1];
+    let levelWarn = "";
+    if (cfg.profileMode === "level") {
+      // Konstante Höhe über der LZ; über höherem Gelände nie tiefer als die Anflughöhe über Grund
+      const lp = levelProfile(G, sim.gTGT, m.agl, m.agl);
+      G = lp.G;
+      if (lp.maxExcess > 1)
+        levelWarn = `⚠ Gelände/Hindernisse auf der Route: Höhe ${Math.round((lp.level - N) / FT)} ft MSL lokal um bis zu ${Math.round(lp.maxExcess / FT)} ft angehoben (Mindesthöhe ${Math.round(m.agl / FT)} ft über Grund)`;
+    }
     sim.traj = buildTrajectory({
       start: m.start,
       courseStart: m.courseStart,
@@ -1042,6 +1067,7 @@ async function startMission() {
         true,
         9000,
       );
+    else if (levelWarn) toast(`${info}\n${levelWarn}`, true, 9000);
     else toast(`${info}\n${osmSummary()}`, false, 7000);
   } catch (e) {
     console.error(e);
@@ -1742,6 +1768,16 @@ const showApproachMode = (v) => {
 const setApproachSeg = segInit("approachMode", "approachMode", showApproachMode);
 showApproachMode(cfg.approachMode);
 segInit("courseRef", "courseRef", onMissionInput);
+function applyProfileMode() {
+  const lvl = cfg.profileMode === "level";
+  $("aglLabel").textContent = lvl ? "Anflughöhe über LZ" : "Anflughöhe";
+  $("aglUnit").textContent = lvl ? "ft über LZ" : "ft AGL";
+}
+segInit("profileMode", "profileMode", () => {
+  applyProfileMode();
+  onMissionInput();
+});
+applyProfileMode();
 const unitSegs = ["distUnit", "distUnitGlobal"].map((id) => segInit(id, null, (v) => setDistUnit(v)));
 function applyUnitLabels() {
   const u = UNIT();
@@ -1855,6 +1891,21 @@ $("routeShow").addEventListener("change", (e) => {
 
 $("startBtn").addEventListener("click", startMission);
 $("plateBtn").addEventListener("click", makePlate);
+$("plMap").value = cfg.plMap;
+$("plMap").addEventListener("change", (e) => {
+  cfg.plMap = e.target.value;
+  saveCfg();
+});
+$("plMapDlg").addEventListener("change", async (e) => {
+  cfg.plMap = $("plMap").value = e.target.value;
+  saveCfg();
+  if (!lastPlate) return;
+  lastPlate.basemap = cfg.plMap;
+  $("plateStatus").textContent = "Karte wird geladen …";
+  const res = await renderPlate($("plateCanvas"), lastPlate, (t) => ($("plateStatus").textContent = t));
+  if (res.cancelled) return;
+  $("plateStatus").textContent = res.tilesOk ? "" : "⚠ Kartenkacheln nicht erreichbar";
+});
 $("plateClose").addEventListener("click", () => $("plateDlg").close());
 $("platePng").addEventListener("click", () => {
   const url = plateDataUrl();

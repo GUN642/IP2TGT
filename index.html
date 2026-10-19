@@ -19,7 +19,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=15" rel="stylesheet" />
+    <link href="css/style.css?v=16" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -46,7 +46,7 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v15</span></p>
+          <p>Hubschrauber-Anflugsimulator · <span class="ver">v16</span></p>
         </div>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
       </header>
@@ -197,6 +197,14 @@
           <label class="field"
             ><span>Remarks</span><input id="plRemarks" type="text" placeholder="z. B. Hochspannungsleitung N"
           /></label>
+          <label class="field"
+            ><span>Kartenhintergrund</span
+            ><select id="plMap">
+              <option value="aerial">Luftbild</option>
+              <option value="topo">Topografisch (OpenTopoMap)</option>
+              <option value="osm">OpenStreetMap</option>
+            </select></label
+          >
           <button id="plateBtn" class="btn ghost wide">📄 Approach Plate erstellen</button>
         </section>
 
@@ -209,11 +217,26 @@
               <button data-v="km">km</button>
             </div>
           </div>
+          <div class="unit-row">
+            <span>Höhenprofil</span>
+            <div class="seg mini" id="profileMode">
+              <button data-v="terrain" class="on" title="Hält die Radarhöhe über Gelände und Hindernissen">
+                Geländefolgend
+              </button>
+              <button
+                data-v="level"
+                title="Konstante Höhe: Anflughöhe über der LZ-Elevation, gehalten bis zur Verzögerung"
+              >
+                Konstant über LZ
+              </button>
+            </div>
+          </div>
           <div class="slider-field">
             <div class="slider-head">
-              <span>Anflughöhe</span
+              <span id="aglLabel">Anflughöhe</span
               ><span class="val"
-                ><input id="aglNum" type="number" min="20" max="500" step="5" value="100" /> ft AGL</span
+                ><input id="aglNum" type="number" min="20" max="500" step="5" value="100" />
+                <span id="aglUnit">ft AGL</span></span
               >
             </div>
             <input id="agl" type="range" min="20" max="500" step="5" value="100" />
@@ -418,6 +441,11 @@
     <dialog id="plateDlg" class="glass plate-dlg">
       <div class="map-head">
         <b class="plate-title">Target Approach Plate</b>
+        <select id="plMapDlg" class="plate-map" title="Kartenhintergrund">
+          <option value="aerial">Luftbild</option>
+          <option value="topo">Topo</option>
+          <option value="osm">OSM</option>
+        </select>
         <span class="muted small" id="plateStatus"></span>
         <span class="spacer"></span>
         <button id="platePng" class="icon-btn" title="Als PNG speichern">⬇ PNG</button>
@@ -476,6 +504,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=15"></script>
+    <script type="module" src="js/app.js?v=16"></script>
   </body>
 </html>
