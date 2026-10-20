@@ -1,17 +1,18 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=17";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=17";
-import { getHelicopterDef } from "./models.js?v=17";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=17";
-import { VisualMode } from "./nvg.js?v=17";
-import { Hud } from "./hud.js?v=17";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=17";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=17";
-import { loadObstacles } from "./obstacles.js?v=17";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=17";
-import { renderPlate } from "./plate.js?v=17";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=17";
+import * as geo from "./geo.js?v=18";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=18";
+import { getHelicopterDef } from "./models.js?v=18";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=18";
+import { VisualMode } from "./nvg.js?v=18";
+import { Hud } from "./hud.js?v=18";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=18";
+import { createCapture } from "./capture.js?v=18";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=18";
+import { loadObstacles } from "./obstacles.js?v=18";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=18";
+import { renderPlate } from "./plate.js?v=18";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=18";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -1374,6 +1375,7 @@ scene.preUpdate.addEventListener(() => {
     if (sim.t >= sim.traj.total) {
       sim.t = sim.traj.total;
       setPlaying(false);
+      if (capture.recording) setTimeout(stopRecording, 1500);
     }
   }
   sim.frame++;
@@ -1469,9 +1471,10 @@ scene.postRender.addEventListener(() => {
   const fpvW = Cesium.Cartesian3.fromDegrees(fut.lon, fut.lat, fut.alt + (heli.def.eye[2] - 0));
   const brg = geo.inverse(st.lat, st.lon, m.tgt.lat, m.tgt.lon).course1;
   let message = null;
-  if (tr.times.ip > 0.5 && sim.t > tr.times.ip && sim.t < tr.times.ip + 4) message = "IP – KURS HALTEN";
+  if (tr.times.ip > 0.5 && sim.t > tr.times.ip && sim.t < tr.times.ip + 4)
+    message = `PASSING IP: X-${Math.max(1, Math.round((tr.times.hover - tr.times.ip) / 60))}`;
   else if (sim.t > tr.times.decel && sim.t < tr.times.decel + 3) message = "VERZÖGERN";
-  else if (sim.t > tr.times.landed && sim.t < tr.times.landed + 5) message = "TOUCHDOWN";
+  else if (sim.t > tr.times.landed && sim.t < tr.times.landed + 5) message = "SAFE DOWN";
   // Hindernisse voraus (Warnung + Symbole im HUD)
   let hazard = null;
   const hazardMarks = [];
@@ -1525,6 +1528,59 @@ function updateTelemetry(st) {
   $("tHdg").textContent = geo.fmtCourse(st.heading - m.variation);
   $("tDist").textContent = (st.distToGo / UNIT().f).toFixed(2);
   $("tEte").textContent = geo.fmtTime(Math.max(0, sim.traj.times.hover - sim.t));
+}
+
+// ---------------------------------------------------------------------------
+// Screenshot & Video (nach dem HUD-Listener registriert, damit das HUD mit drauf ist)
+// ---------------------------------------------------------------------------
+
+const capture = createCapture(scene);
+const captureName = () =>
+  `IP2TGT_${(cfg.plLz || "LZ").replace(/[^\w-]+/g, "_")}_${geo.fmtTime(sim.t).replace(":", "-")}`;
+
+async function takeScreenshot() {
+  if (!sim.traj) return;
+  $("shotBtn").disabled = true;
+  try {
+    const ok = await capture.shot(captureName());
+    toast(ok ? "Screenshot gespeichert" : "Screenshot nicht möglich", !ok);
+  } catch (e) {
+    console.error(e);
+    toast("Screenshot nicht möglich: " + (e.message || e), true);
+  } finally {
+    $("shotBtn").disabled = false;
+  }
+}
+
+async function toggleRecording() {
+  if (capture.recording) return stopRecording();
+  if (!sim.traj) return;
+  if (!capture.supportsVideo()) return toast("Videoaufnahme wird von diesem Browser nicht unterstützt.", true, 6000);
+  try {
+    sim.t = 0;
+    sim.prevAlt = null;
+    const name = `IP2TGT_${(cfg.plLz || "LZ").replace(/[^\w-]+/g, "_")}_Anflug`;
+    await capture.startVideo(name);
+    setPlaying(true);
+    $("recBtn").classList.add("rec");
+    $("recBtn").title = "Aufnahme beenden und speichern (V)";
+    toast(
+      `Aufnahme läuft (${SPEEDS[sim.speedIdx]}× Zeitraffer) – endet automatisch nach der Landung. Ansicht, NVG und HUD lassen sich währenddessen umschalten.`,
+      false,
+      6000,
+    );
+  } catch (e) {
+    console.error(e);
+    toast("Videoaufnahme nicht möglich: " + (e.message || e), true, 6000);
+  }
+}
+
+async function stopRecording() {
+  if (!capture.recording) return;
+  $("recBtn").classList.remove("rec");
+  $("recBtn").title = "Anflug als Video aufnehmen (V)";
+  const size = await capture.stopVideo();
+  toast(size ? `Video gespeichert (${(size / 1048576).toFixed(1)} MB)` : "Video leer – nichts gespeichert", !size);
 }
 
 function updateTube() {
@@ -1605,6 +1661,8 @@ window.addEventListener("keydown", (e) => {
   else if (k === "r" || k === "R") resetLook();
   else if (k === "f" || k === "F") toggleFullscreen();
   else if (k === "p" || k === "P") togglePanel();
+  else if (k === "s" || k === "S") takeScreenshot();
+  else if (k === "v" || k === "V") toggleRecording();
   else if (k === "+" || k === "=") setSpeed(sim.speedIdx + 1);
   else if (k === "-") setSpeed(sim.speedIdx - 1);
   else if (k === "Home") {
@@ -1691,6 +1749,7 @@ async function useGpsFor(which, btn) {
 
 function exitSim() {
   setPlaying(false);
+  stopRecording();
   sim.traj = null;
   sim.lastSt = null;
   if (heli) heli.models.forEach((m) => (m.show = false));
@@ -2021,6 +2080,36 @@ $("timeline").addEventListener("input", (e) => {
 $("hudBtn").addEventListener("click", toggleHud);
 $("tubeBtn").addEventListener("click", toggleTube);
 $("fsBtn").addEventListener("click", toggleFullscreen);
+$("shotBtn").addEventListener("click", takeScreenshot);
+
+// ---------------------------------------------------------------------------
+// Installierbare Web-App (PWA)
+// ---------------------------------------------------------------------------
+
+if ("serviceWorker" in navigator)
+  navigator.serviceWorker.register("sw.js").catch((e) => console.warn("Service Worker:", e));
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvt = e;
+  $("installBtn").hidden = false;
+});
+window.addEventListener("appinstalled", () => {
+  installEvt = null;
+  $("installBtn").hidden = true;
+  toast("IP2TGT wurde als App installiert.");
+});
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+if (!standalone && /iPhone|iPad|iPod/.test(navigator.userAgent)) $("installBtn").hidden = false;
+$("installBtn").addEventListener("click", async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    await installEvt.userChoice.catch(() => {});
+    installEvt = null;
+    $("installBtn").hidden = true;
+  } else toast("Zum Installieren: Teilen-Symbol → „Zum Home-Bildschirm“.", false, 7000);
+});
+$("recBtn").addEventListener("click", toggleRecording);
 $("panelClose").addEventListener("click", closePanel);
 $("panelOpen").addEventListener("click", openPanel);
 window.addEventListener("resize", updateTube);

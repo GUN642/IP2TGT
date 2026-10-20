@@ -47,6 +47,25 @@ export function toCanvas(im) {
   return im;
 }
 
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
+
+/** Esri-Luftbildkachel per fetch (wie der 3D-Globus) als ImageBitmap oder null */
+export async function esriTile(x, y, z) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch(`${ESRI}${z}/${y}/${x}`, { mode: "cors", signal: ctl.signal });
+    if (!r.ok) return null;
+    const b = await r.blob();
+    const im = b.size ? await createImageBitmap(b) : null;
+    return im && !isBlankImage(im) ? im : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 const probe = document.createElement("canvas");
 probe.width = probe.height = 16;
 const pctx = probe.getContext("2d", { willReadFrequently: true });

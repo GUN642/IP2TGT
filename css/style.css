@@ -1080,3 +1080,33 @@ select.plate-map {
   width: auto;
   padding: 8px 28px 8px 10px;
 }
+
+/* ---------- Screenshot / Video ---------- */
+#recBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+#recBtn .rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff4d5e;
+}
+#recBtn.rec {
+  border-color: #ff4d5e;
+  color: #ff8a95;
+}
+#recBtn.rec .rec-dot {
+  animation: recblink 1s steps(2, start) infinite;
+}
+@keyframes recblink {
+  to {
+    visibility: hidden;
+  }
+}
+#shotBtn svg {
+  display: block;
+}

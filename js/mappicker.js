@@ -1,7 +1,7 @@
 // 2D-Kartenauswahl für TGT und IP (Leaflet): Klicken, Marker ziehen, Ortssuche, eigene GPS-Position.
 
-import * as geo from "./geo.js?v=17";
-import { bingTile } from "./imagery.js?v=17";
+import * as geo from "./geo.js?v=18";
+import { bingTile, esriTile } from "./imagery.js?v=18";
 
 const LEAFLET = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/";
 const $ = (id) => document.getElementById(id);
@@ -111,26 +111,36 @@ function initMap() {
     maxZoom: 19,
     attribution: "© OpenStreetMap-Mitwirkende",
   });
-  // Bing-Luftbild über Cesium ion (funktioniert auch, wo Esri gesperrt ist)
-  const BingLayer = L.GridLayer.extend({
+  // Luftbild als Canvas-Kacheln aus einer Kette von Quellen (erste, die liefert, gewinnt):
+  // Esri per fetch (wie der 3D-Globus) -> Bing über Cesium ion
+  const ChainLayer = L.GridLayer.extend({
     createTile(coords, done) {
       const tile = document.createElement("canvas");
       tile.width = tile.height = 256;
-      bingTile(coords.x, coords.y, coords.z).then((im) => {
-        if (im) tile.getContext("2d").drawImage(im, 0, 0, 256, 256);
+      (async () => {
+        for (const src of this.options.sources) {
+          const im = await src(coords.x, coords.y, coords.z).catch(() => null);
+          if (im) {
+            tile.getContext("2d").drawImage(im, 0, 0, 256, 256);
+            break;
+          }
+        }
         done(null, tile);
-      });
+      })();
       return tile;
     },
   });
-  const bing = new BingLayer({
-    maxZoom: 20,
-    maxNativeZoom: 19,
-    attribution: "© Microsoft Bing Maps (über Cesium ion)",
+  const opts = { maxZoom: 20, maxNativeZoom: 19 };
+  const aerial = new ChainLayer({
+    ...opts,
+    sources: [esriTile, bingTile],
+    attribution: "Esri, Maxar, Earthstar Geographics / © Microsoft Bing Maps",
   });
+  const bing = new ChainLayer({ ...opts, sources: [bingTile], attribution: "© Microsoft Bing Maps (über Cesium ion)" });
   const bases = {
-    Luftbild: L.layerGroup([bing, labels]),
+    Luftbild: L.layerGroup([aerial, labels]),
     "Luftbild (Esri)": L.layerGroup([esri, labels]),
+    "Luftbild (Bing)": L.layerGroup([bing, labels]),
     Topografisch: topo,
     OpenStreetMap: osm,
   };

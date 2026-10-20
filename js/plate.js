@@ -1,8 +1,8 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=17";
-import { isBlankImage } from "./imagery.js?v=17";
+import * as geo from "./geo.js?v=18";
+import { isBlankImage } from "./imagery.js?v=18";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;

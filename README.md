@@ -9,7 +9,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 ## Funktionen
 
 - **TGT/LZ und IP** per **MGRS** oder **Lat/Lon** eingeben, auf einer **Karte auswählen** oder die **aktuelle Position (GPS)** übernehmen.
-  - Kartenauswahl (🗺): Luftbild, topografische Karte oder OpenStreetMap; Klick setzt TGT bzw. IP, Marker sind verschiebbar, Kurs/Distanz IP→TGT und MGRS unter dem Cursor werden live angezeigt; Ortssuche oder Koordinateneingabe im Suchfeld; „Meine Position“ setzt den Gerätestandort.
+  - Kartenauswahl (🗺): Luftbild (Esri, ersatzweise Bing), topografische Karte oder OpenStreetMap; Klick setzt TGT bzw. IP, Marker sind verschiebbar, Kurs/Distanz IP→TGT und MGRS unter dem Cursor werden live angezeigt; Ortssuche oder Koordinateneingabe im Suchfeld; „Meine Position“ setzt den Gerätestandort.
   - GPS-Knopf (◎) neben den Feldern übernimmt den aktuellen Standort direkt (Browser-Freigabe nötig, nur über HTTPS – auf GitHub Pages gegeben).
   - MGRS: `32U NB 20005 62607`, `32UNB2000562607`, auch kurz `NB 2000 6260` (Zone wird vom TGT übernommen)
   - Lat/Lon: `51.1146, 9.2858` · `51,1146 9,2858` · `N51 06.876 E009 17.148` · `51°06'52.6"N 9°17'08.9"E` · `N5106.88 E00917.15` (auch `O` für Ost)
@@ -29,6 +29,9 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 - **HUD** mit Kursband, Kurs-Bug zum TGT, GS, Radarhöhe, MSL-Höhe, Steig-/Sinkrate, Horizont/Nicklage, Flugbahnvektor, LZ- und IP-Markern, Distanz und ETE.
 - **Tag / NVG:** grünes Phosphorbild mit Rauschen, Halo-Effekt, „NIR-heller“ Vegetation, optional 40°-Röhrensichtfeld.
 - Pause, Zeitraffer (0,25×–16×), Zeitleiste zum Spulen, teilbarer **Missions-Link**.
+- HUD-Meldungen: beim IP-Überflug `PASSING IP: X-n` (n = Minuten bis zur LZ), Verzögern, nach dem Aufsetzen `SAFE DOWN`.
+- **Screenshot** (Kamera-Knopf, Taste `S`) und **Video des gesamten Anflugs** (REC, Taste `V`) für das Briefing: Aufnahme startet am Anfang, läuft mit dem eingestellten Zeitraffer und endet automatisch nach der Landung; Ansicht, Tag/NVG und HUD lassen sich währenddessen umschalten. Gespeichert wird als MP4 (H.264), wenn der Browser es kann, sonst WebM.
+- **Als Web-App installierbar** (Chrome/Edge/Samsung Internet: „Als App installieren“ im Panel bzw. Browsermenü; iPhone/iPad: Teilen → „Zum Home-Bildschirm“).
 
 ## Geodaten
 
@@ -56,6 +59,8 @@ Alle Daten werden zur Laufzeit online abgerufen; die Nutzungsbedingungen der jew
 | Maus ziehen / Mausrad | Umsehen bzw. Orbit / Zoom |
 | `P` | Planungspanel ein/aus |
 | `F` | Vollbild |
+| `S` | Screenshot |
+| `V` | Video-Aufnahme starten/stoppen |
 
 ## Hosting auf GitHub Pages
 
@@ -77,6 +82,9 @@ js/terrain.js       Cesium-TerrainProvider für AWS Terrarium-Kacheln + Höhen-S
 js/buildings.js     OSM-Gebäude via Overpass (Extrusion, Hindernishöhen)
 js/obstacles.js     Leitungen, Masten, Windräder, Wald/Bäume (OSM), Hindernisprofil & HUD-Warnungen
 js/plate.js         Target Approach Plate (Canvas, PNG/PDF-Export)
+js/capture.js       Screenshot und Videoaufnahme (Szene + Cockpit + HUD)
+js/imagery.js       Luftbild-Helfer (Esri per fetch, Bing über ion, Leerkachel-Erkennung)
+manifest.webmanifest, sw.js, icons/   Installierbare Web-App (PWA)
 js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position
 js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F (GLB im Speicher)
 js/hud.js           HUD-Symbologie
