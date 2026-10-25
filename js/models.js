@@ -1,4 +1,4 @@
-// Prozedurale Low-Poly-Hubschraubermodelle (CH-53G / CH-47F) als GLB im Speicher.
+// Prozedurale Low-Poly-Hubschraubermodelle (CH-53G / CH-47F / H145M LUH SOF) als GLB im Speicher.
 // Lokales Koordinatensystem: x = vorne, y = links, z = oben; Ursprung = Bodenkontakt (Fahrwerk), Rumpfmitte.
 
 // ---------------------------------------------------------------------------
@@ -190,6 +190,32 @@ function blade(mesh, plane, ang, rIn, rOut, chord, thick, color) {
   for (const f of F) mesh.quad(P[f[0]], P[f[1]], P[f[2]], P[f[3]], color, mid);
 }
 
+/** Rohr zwischen zwei beliebigen Punkten (Kufen, Querrohre) */
+function tube(mesh, p0, p1, r, color, segs = 8) {
+  const d = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+  const L = Math.hypot(...d);
+  const a = d.map((v) => v / L);
+  const h = Math.abs(a[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  let u = [a[1] * h[2] - a[2] * h[1], a[2] * h[0] - a[0] * h[2], a[0] * h[1] - a[1] * h[0]];
+  const ul = Math.hypot(...u);
+  u = u.map((v) => v / ul);
+  const w = [a[1] * u[2] - a[2] * u[1], a[2] * u[0] - a[0] * u[2], a[0] * u[1] - a[1] * u[0]];
+  const ring = (p) =>
+    Array.from({ length: segs }, (_, i) => {
+      const t = (i / segs) * Math.PI * 2,
+        c = Math.cos(t) * r,
+        sn = Math.sin(t) * r;
+      return [p[0] + u[0] * c + w[0] * sn, p[1] + u[1] * c + w[1] * sn, p[2] + u[2] * c + w[2] * sn];
+    });
+  const r0 = ring(p0),
+    r1 = ring(p1);
+  const mid = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2];
+  for (let i = 0; i < segs; i++) {
+    const j = (i + 1) % segs;
+    mesh.quad(r0[i], r0[j], r1[j], r1[i], color, mid);
+  }
+}
+
 function disc(mesh, plane, r, color, segs = 48) {
   const c = [0, 0, 0];
   for (let i = 0; i < segs; i++) {
@@ -301,6 +327,8 @@ const C = {
   oliveDark: [0.27, 0.3, 0.22, 1],
   grey: [0.33, 0.35, 0.36, 1],
   greyDark: [0.22, 0.23, 0.24, 1],
+  luh: [0.2, 0.215, 0.225, 1], // Bundeswehr-Dunkelgrau (LUH SOF)
+  luhDark: [0.14, 0.15, 0.16, 1],
   black: [0.06, 0.06, 0.06, 1],
   glass: [0.05, 0.08, 0.1, 1],
   rubber: [0.04, 0.04, 0.04, 1],
@@ -609,9 +637,145 @@ function buildCH47() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// H145M LUH SOF (Kufen, Fenestron, 4-Blatt-Hauptrotor, Rettungswinde, EO/IR-Sensor)
+// ---------------------------------------------------------------------------
+
+function buildH145() {
+  const body = new Mesh();
+  const paint = bodyPaint(
+    C.luh,
+    (x, y, z) =>
+      // große Frontscheibe + Kinnfenster, Cockpittüren, Schiebetürfenster
+      (x > 3.15 && z > 1.4) ||
+      (x > 3.7 && z > 0.92 && z < 1.3 && Math.abs(y) > 0.12) ||
+      (x > 2.0 && x < 3.25 && z > 1.3 && z < 2.25 && Math.abs(y) > 0.72) ||
+      (x > -0.3 && x < 1.5 && z > 1.45 && z < 2.1 && Math.abs(y) > 0.75),
+  );
+  loft(
+    body,
+    [
+      { x: 4.8, hw: 0.2, zb: 1.05, zt: 1.35, n: 2.5 },
+      { x: 4.6, hw: 0.58, zb: 0.86, zt: 1.9, n: 3 },
+      { x: 4.05, hw: 0.82, zb: 0.76, zt: 2.3, n: 3.5 },
+      { x: 3.0, hw: 0.88, zb: 0.73, zt: 2.45, n: 4 },
+      { x: -1.6, hw: 0.88, zb: 0.73, zt: 2.45, n: 4.2 },
+      { x: -2.3, hw: 0.8, zb: 0.95, zt: 2.4, n: 4 },
+      { x: -2.7, hw: 0.45, zb: 1.5, zt: 2.25, n: 3 },
+      { x: -4.5, hw: 0.28, zb: 1.75, zt: 2.15, n: 2.5 },
+      { x: -6.1, hw: 0.22, zb: 1.85, zt: 2.15, n: 2.5 },
+    ],
+    paint,
+    22,
+  );
+  // Triebwerks-/Getriebeverkleidung auf dem Kabinendach
+  loft(
+    body,
+    [
+      { x: 2.0, hw: 0.3, zb: 2.38, zt: 2.5, n: 3 },
+      { x: 1.3, hw: 0.68, zb: 2.38, zt: 2.95, n: 3.5 },
+      { x: -2.0, hw: 0.68, zb: 2.38, zt: 2.95, n: 3.5 },
+      { x: -3.0, hw: 0.32, zb: 2.2, zt: 2.55, n: 3 },
+    ],
+    C.luh,
+    18,
+  );
+  for (const s of [1, -1]) {
+    cylinder(body, [-2.2, s * 0.42, 2.72], "x", 0.17, 0.5, C.black, 10); // Abgasrohre
+    // Kufenlandegestell
+    tube(body, [2.55, s * 1.1, 0.07], [-2.5, s * 1.1, 0.07], 0.05, C.luhDark);
+    tube(body, [2.55, s * 1.1, 0.07], [2.95, s * 1.1, 0.32], 0.05, C.luhDark);
+    tube(body, [1.4, s * 1.1, 0.07], [1.2, s * 0.7, 0.8], 0.055, C.luhDark);
+    tube(body, [-1.25, s * 1.1, 0.07], [-1.05, s * 0.7, 0.8], 0.055, C.luhDark);
+    // Endscheiben des Höhenleitwerks
+    box(body, -5.45, s * 1.12, 2.08, 0.55, 0.05, 0.5, C.luh);
+  }
+  tube(body, [1.2, 0.7, 0.8], [1.2, -0.7, 0.8], 0.05, C.luhDark);
+  tube(body, [-1.05, 0.7, 0.8], [-1.05, -0.7, 0.8], 0.05, C.luhDark);
+  // Rotormast
+  cylinder(body, [0.15, 0, 3.12], "z", 0.2, 0.4, C.greyDark, 12);
+  // Höhenleitwerk
+  box(body, -5.45, 0, 2.08, 0.6, 2.2, 0.06, C.luh);
+  // Fenestron: Ummantelung + dunkler Kanal, darüber Seitenflosse
+  cylinder(body, [-6.6, 0, 2.05], "y", 0.78, 0.34, C.luh, 24);
+  cylinder(body, [-6.6, 0, 2.05], "y", 0.55, 0.36, C.black, 20);
+  loft(
+    body,
+    [
+      { x: -6.25, hw: 0.08, zb: 2.6, zt: 2.75, n: 2.5 },
+      { x: -6.7, hw: 0.12, zb: 2.6, zt: 3.35, n: 2.5 },
+      { x: -7.3, hw: 0.08, zb: 2.1, zt: 3.45, n: 2.5 },
+    ],
+    C.luh,
+    10,
+  );
+  // EO/IR-Sensor unter dem Bug
+  cylinder(body, [4.05, 0, 0.62], "z", 0.13, 0.12, C.luhDark, 10);
+  cylinder(body, [4.05, 0, 0.42], "z", 0.2, 0.3, C.luhDark, 14, 0.17);
+  box(body, 4.25, 0, 0.42, 0.04, 0.16, 0.14, C.glass);
+  // Rettungswinde rechts über der Schiebetür
+  box(body, 1.3, -0.98, 2.42, 0.25, 0.25, 0.18, C.luhDark);
+  box(body, 1.3, -1.28, 2.42, 0.32, 0.4, 0.2, C.luhDark);
+  // Waffen-/Außenlastträger (HForce-Stummel)
+  for (const s of [1, -1]) {
+    box(body, 0.2, s * 1.15, 0.95, 0.35, 0.55, 0.08, C.luhDark);
+    box(body, 0.2, s * 1.4, 0.82, 0.9, 0.12, 0.14, C.luhDark);
+  }
+  // Drahtschneider (oben und unten am Bug)
+  box(body, 3.2, 0, 2.62, 0.5, 0.04, 0.3, C.metal);
+  box(body, 4.3, 0, 0.72, 0.4, 0.04, 0.2, C.metal);
+
+  // Hauptrotor: 4 Blätter, R = 5.5 m
+  const rotor = new Mesh();
+  const R = 5.5;
+  for (let b = 0; b < 4; b++) {
+    const ang = (b / 4) * Math.PI * 2;
+    blade(rotor, "xy", ang, 0.35, R - 0.2, 0.32, 0.06, C.blade);
+    blade(rotor, "xy", ang, R - 0.2, R, 0.32, 0.06, C.tip);
+  }
+  cylinder(rotor, [0, 0, 0], "z", 0.38, 0.22, C.greyDark, 12);
+  const rotorDisc = new Mesh();
+  disc(rotorDisc, "xy", R, C.disc);
+
+  // Fenestron-Lüfter: 10 Blätter im Kanal
+  const fan = new Mesh();
+  const r = 0.52;
+  for (let b = 0; b < 10; b++) blade(fan, "xz", (b / 10) * Math.PI * 2, 0.1, r, 0.12, 0.03, C.blade);
+  cylinder(fan, [0, 0, 0], "y", 0.12, 0.2, C.greyDark, 10);
+  const fanDisc = new Mesh();
+  disc(fanDisc, "xz", r, C.disc, 24);
+
+  return {
+    name: "H145M LUH SOF",
+    body: toGlb([{ mesh: body }]),
+    rotors: [
+      {
+        glb: toGlb([{ mesh: rotor }, { mesh: rotorDisc, material: { blend: true, alpha: 1, doubleSided: true } }]),
+        hub: [0.15, 0, 3.42],
+        axis: "z",
+        dir: -1,
+        rpm: 383,
+        tiltDeg: 4,
+      },
+      {
+        glb: toGlb([{ mesh: fan }, { mesh: fanDisc, material: { blend: true, alpha: 1, doubleSided: true } }]),
+        hub: [-6.6, 0, 2.05],
+        axis: "y",
+        dir: 1,
+        rpm: 1600,
+      },
+    ],
+    eye: [3.2, -0.42, 1.78], // rechter Pilotensitz
+    copilotEye: [3.2, 0.42, 1.78],
+    length: 13.6,
+    cockpitStyle: "h145",
+  };
+}
+
+const BUILDERS = { CH53: buildCH53, CH47: buildCH47, H145: buildH145 };
 const cache = {};
 export function getHelicopterDef(type) {
-  if (!cache[type]) cache[type] = type === "CH47" ? buildCH47() : buildCH53();
+  if (!cache[type]) cache[type] = (BUILDERS[type] || buildCH53)();
   return cache[type];
 }
 

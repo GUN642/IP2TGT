@@ -24,7 +24,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 - **Target Approach Plate** (Knopf „📄 Approach Plate erstellen“): Kopfzeile CALLSIGN / SEQUENCE / ALTERNATE LZ / LZ / GRID / ELEV / REMARKS, links Strecke IP→TGT (Kurs oben) mit Distanzmarken, Kurs/Zeit und Abflugkurs, rechts LZ-Detail mit LZ-Kreis, An-/Abflug und automatischen Abstandsmaßen zu Gebäuden, Bäumen, Masten und Leitungen. Export als PNG oder Drucken/PDF (A4 quer).
 - **Höhenprofil wählbar:** *Geländefolgend* (hält die Radarhöhe über Gelände/Hindernissen) oder *Konstant über LZ* (Höhe = LZ-Elevation + Anflughöhe, geradlinig gehalten bis zur Verzögerung; nur wo Gelände/Hindernisse höher sind, wird lokal auf die Anflughöhe über Grund angehoben – mit Hinweis).
 - **TAP-Kartenhintergrund:** Luftbild (automatisch: Bing über Cesium ion → Bildquelle des 3D-Globus → Esri → Senkrechtaufnahme aus dem 3D-Globus), gezielt *Luftbild Esri*, *Luftbild Bing* oder *Luftbild 3D-Globus*, Topografisch (OpenTopoMap) oder OpenStreetMap – auch direkt im Plate-Fenster umschaltbar. Die Statuszeile im Plate-Fenster zeigt, wie viele Kacheln je Quelle geladen wurden (hilfreich in Netzen mit Filtern/Proxys).
-- **Hubschrauber:** CH-53G (6-Blatt-Hauptrotor, Heckrotor) oder CH-47F (Tandemrotor), mit drehenden Rotoren.
+- **Hubschrauber:** CH-53G (6-Blatt-Hauptrotor, Heckrotor), CH-47F (Tandemrotor) oder H145M LUH SOF (4-Blatt-Hauptrotor, Fenestron, Kufen, Rettungswinde, EO/IR-Sensor, Außenlastträger), mit drehenden Rotoren und eigenem Cockpitrahmen.
 - **Ansichten:** Cockpit (rechter Pilotensitz, Umsehen mit der Maus), Außen (Orbit), Beobachter an der LZ, freie Kamera.
 - **HUD** mit Kursband, Kurs-Bug zum TGT, GS, Radarhöhe, MSL-Höhe, Steig-/Sinkrate, Horizont/Nicklage, Flugbahnvektor, LZ- und IP-Markern, Distanz und ETE.
 - **Tag / NVG:** grünes Phosphorbild mit Rauschen, Halo-Effekt, „NIR-heller“ Vegetation, optional 40°-Röhrensichtfeld.
@@ -86,7 +86,7 @@ js/capture.js       Screenshot und Videoaufnahme (Szene + Cockpit + HUD)
 js/imagery.js       Luftbild-Helfer (Esri per fetch, Bing über ion, Leerkachel-Erkennung)
 manifest.webmanifest, sw.js, icons/   Installierbare Web-App (PWA)
 js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position
-js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F (GLB im Speicher)
+js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F / H145M (GLB im Speicher)
 js/hud.js           HUD-Symbologie
 js/cockpit.js       Cockpit-Rahmen (SVG)
 js/nvg.js           NVG-Post-Processing

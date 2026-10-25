@@ -15,11 +15,18 @@ const MFD = (x, y, w, h) => `
     ${[0, 1, 2, 3, 4].map((i) => `<rect x="${x - 4 + (w / 5) * i + 6}" y="${y + h + 8}" width="${w / 5 - 12}" height="6" rx="2" fill="#2b2e33"/>`).join("")}
   </g>`;
 
+// Geometrie je Muster: Instrumententafel-Oberkante, Mittelstrebe, rechte Seitenstrebe, Dachkante
+const STYLES = {
+  ch53: { panelTop: 625, post: 510, side: 1430, roof: [60, 95, 75, 30], postW: 20 },
+  ch47: { panelTop: 650, post: 545, side: 1470, roof: [40, 70, 55, 20], postW: 20 },
+  // H145M: große Bubble-Scheibe, schmale Streben, tiefe Instrumententafel (Helionix)
+  h145: { panelTop: 705, post: 430, side: 1520, roof: [10, 30, 20, -10], postW: 12 },
+};
+
 function frame(style) {
-  const ch47 = style === "ch47";
-  const panelTop = ch47 ? 650 : 625;
-  const post = ch47 ? 545 : 510; // Mittelstrebe (Pilot sitzt rechts)
-  const side = ch47 ? 1470 : 1430;
+  const S = STYLES[style] || STYLES.ch53;
+  const { panelTop, post, side, postW } = S;
+  const [r0, r1, r2, r3] = S.roof;
   return `
   <defs>
     <linearGradient id="cpFrameGrad" x1="0" y1="0" x2="0" y2="1">
@@ -33,14 +40,14 @@ function frame(style) {
   </defs>
   <g id="frame">
     <!-- Dachkonsole / oberer Rahmen -->
-    <path fill="url(#cpFrameGrad)" d="M-1600 -900 L3200 -900 L3200 ${ch47 ? 40 : 60}
-      Q 2400 ${ch47 ? 70 : 95} 1600 ${ch47 ? 55 : 75} Q 800 ${ch47 ? 20 : 30} 0 ${ch47 ? 55 : 75}
-      Q -800 ${ch47 ? 70 : 95} -1600 ${ch47 ? 40 : 60} Z"/>
+    <path fill="url(#cpFrameGrad)" d="M-1600 -900 L3200 -900 L3200 ${r0}
+      Q 2400 ${r1} 1600 ${r2} Q 800 ${r3} 0 ${r2}
+      Q -800 ${r1} -1600 ${r0} Z"/>
     <!-- Mittelstrebe -->
-    <path fill="url(#cpFrameGrad)" d="M${post - 20} 0 L${post + 20} 0 L${post + 34} ${panelTop} L${post - 34} ${panelTop} Z"/>
+    <path fill="url(#cpFrameGrad)" d="M${post - postW} ${r3} L${post + postW} ${r3} L${post + postW * 1.7} ${panelTop} L${post - postW * 1.7} ${panelTop} Z"/>
     <!-- Magnetkompass an der Mittelstrebe -->
-    <rect x="${post - 30}" y="${ch47 ? 70 : 92}" width="60" height="42" rx="6" fill="#111" stroke="#333" stroke-width="2"/>
-    <rect x="${post - 20}" y="${ch47 ? 80 : 102}" width="40" height="22" rx="3" fill="#2e2a1e"/>
+    <rect x="${post - 30}" y="${Math.max(r3, 0) + 40}" width="60" height="42" rx="6" fill="#111" stroke="#333" stroke-width="2"/>
+    <rect x="${post - 20}" y="${Math.max(r3, 0) + 50}" width="40" height="22" rx="3" fill="#2e2a1e"/>
     <!-- rechte Seitenstrebe -->
     <path fill="url(#cpFrameGrad)" d="M${side} 0 L${side + 70} 0 L${side + 150} ${panelTop + 40} L${side + 40} ${panelTop + 40} Z"/>
     <!-- linke (Copilot-)Seitenstrebe -->

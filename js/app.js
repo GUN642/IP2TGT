@@ -1,18 +1,18 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=18";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=18";
-import { getHelicopterDef } from "./models.js?v=18";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=18";
-import { VisualMode } from "./nvg.js?v=18";
-import { Hud } from "./hud.js?v=18";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=18";
-import { createCapture } from "./capture.js?v=18";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=18";
-import { loadObstacles } from "./obstacles.js?v=18";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=18";
-import { renderPlate } from "./plate.js?v=18";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=18";
+import * as geo from "./geo.js?v=19";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=19";
+import { getHelicopterDef } from "./models.js?v=19";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=19";
+import { VisualMode } from "./nvg.js?v=19";
+import { Hud } from "./hud.js?v=19";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=19";
+import { createCapture } from "./capture.js?v=19";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=19";
+import { loadObstacles } from "./obstacles.js?v=19";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=19";
+import { renderPlate } from "./plate.js?v=19";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=19";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -596,6 +596,7 @@ async function loadHeli(type) {
   const rotors = await Promise.all(def.rotors.map((r) => load(r.glb, Cesium.ShadowMode.DISABLED)));
   [body, ...rotors].forEach((m) => scene.primitives.add(m));
   heli = { type, def, body, rotors, models: [body, ...rotors] };
+  sim.orbit.range = chaseRange();
   mountCockpit($("cockpit"), def.cockpitStyle);
   return heli;
 }
@@ -1640,7 +1641,7 @@ canvas.addEventListener("dblclick", () => resetLook());
 
 function resetLook() {
   if (sim.view === "cockpit") Object.assign(sim.head, { yaw: 0, pitch: -6, fov: 75 });
-  if (sim.view === "chase") Object.assign(sim.orbit, { yaw: 25, pitch: 14, range: 70 });
+  if (sim.view === "chase") Object.assign(sim.orbit, { yaw: 25, pitch: 14, range: chaseRange() });
   if (sim.view === "lz") sim.lzFov = 55;
   updateTube();
 }
@@ -1786,6 +1787,10 @@ function toggleTube() {
 function toggleFullscreen() {
   if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
   else document.exitFullscreen?.();
+}
+/** Abstand der Außenkamera passend zur Größe des Musters */
+function chaseRange() {
+  return heli ? Math.max(40, Math.round(heli.def.length * 2.6)) : 70;
 }
 function closePanel() {
   $("panel").classList.add("closed");
