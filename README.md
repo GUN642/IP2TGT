@@ -8,6 +8,8 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 
 ## Funktionen
 
+- **Tutorial:** Beim ersten Öffnen führt ein bebildertes Tutorial (10 Schritte) durch die App; später jederzeit über **?** oben im Planungspanel, „📘 Tutorial / Anleitung öffnen“ unter *Daten & Darstellung* oder die Taste `?`.
+
 - **TGT/LZ und IP** per **MGRS** oder **Lat/Lon** eingeben, auf einer **Karte auswählen** oder die **aktuelle Position (GPS)** übernehmen.
   - Kartenauswahl (🗺): Luftbild (Esri, ersatzweise Bing), topografische Karte oder OpenStreetMap; Klick setzt TGT bzw. IP, Marker sind verschiebbar, Kurs/Distanz IP→TGT und MGRS unter dem Cursor werden live angezeigt; Ortssuche oder Koordinateneingabe im Suchfeld; „Meine Position“ setzt den Gerätestandort.
   - GPS-Knopf (◎) neben den Feldern übernimmt den aktuellen Standort direkt (Browser-Freigabe nötig, nur über HTTPS – auf GitHub Pages gegeben).
@@ -60,6 +62,7 @@ Alle Daten werden zur Laufzeit online abgerufen; die Nutzungsbedingungen der jew
 | `P` | Planungspanel ein/aus |
 | `F` | Vollbild |
 | `S` | Screenshot |
+| `?` | Tutorial |
 | `V` | Video-Aufnahme starten/stoppen |
 
 ## Hosting auf GitHub Pages
@@ -83,6 +86,7 @@ js/buildings.js     OSM-Gebäude via Overpass (Extrusion, Hindernishöhen)
 js/obstacles.js     Leitungen, Masten, Windräder, Wald/Bäume (OSM), Hindernisprofil & HUD-Warnungen
 js/plate.js         Target Approach Plate (Canvas, PNG/PDF-Export)
 js/capture.js       Screenshot und Videoaufnahme (Szene + Cockpit + HUD)
+js/tutorial.js      Bebildertes Tutorial (Bilder in img/tutorial/)
 js/imagery.js       Luftbild-Helfer (Esri per fetch, Bing über ion, Leerkachel-Erkennung)
 manifest.webmanifest, sw.js, icons/   Installierbare Web-App (PWA)
 js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position

@@ -1,18 +1,19 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=19";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=19";
-import { getHelicopterDef } from "./models.js?v=19";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=19";
-import { VisualMode } from "./nvg.js?v=19";
-import { Hud } from "./hud.js?v=19";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=19";
-import { createCapture } from "./capture.js?v=19";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=19";
-import { loadObstacles } from "./obstacles.js?v=19";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=19";
-import { renderPlate } from "./plate.js?v=19";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=19";
+import * as geo from "./geo.js?v=20";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=20";
+import { getHelicopterDef } from "./models.js?v=20";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=20";
+import { VisualMode } from "./nvg.js?v=20";
+import { Hud } from "./hud.js?v=20";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=20";
+import { createCapture } from "./capture.js?v=20";
+import { initTutorial } from "./tutorial.js?v=20";
+import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=20";
+import { loadObstacles } from "./obstacles.js?v=20";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=20";
+import { renderPlate } from "./plate.js?v=20";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=20";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -1662,6 +1663,7 @@ window.addEventListener("keydown", (e) => {
   else if (k === "r" || k === "R") resetLook();
   else if (k === "f" || k === "F") toggleFullscreen();
   else if (k === "p" || k === "P") togglePanel();
+  else if (k === "?") tutorial.open();
   else if (k === "s" || k === "S") takeScreenshot();
   else if (k === "v" || k === "V") toggleRecording();
   else if (k === "+" || k === "=") setSpeed(sim.speedIdx + 1);
@@ -2086,6 +2088,9 @@ $("hudBtn").addEventListener("click", toggleHud);
 $("tubeBtn").addEventListener("click", toggleTube);
 $("fsBtn").addEventListener("click", toggleFullscreen);
 $("shotBtn").addEventListener("click", takeScreenshot);
+const tutorial = initTutorial();
+$("tutBtn").addEventListener("click", () => tutorial.open());
+$("tutBtn2").addEventListener("click", () => tutorial.open());
 
 // ---------------------------------------------------------------------------
 // Installierbare Web-App (PWA)

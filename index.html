@@ -26,7 +26,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=19" rel="stylesheet" />
+    <link href="css/style.css?v=20" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -53,8 +53,9 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v19</span></p>
+          <p>Hubschrauber-Anflugsimulator · <span class="ver">v20</span></p>
         </div>
+        <button id="tutBtn" class="icon-btn" title="Tutorial / Anleitung (?)" aria-label="Tutorial öffnen">?</button>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
       </header>
 
@@ -341,6 +342,7 @@
           </div>
           <button id="keysBtn" class="link-btn">🔑 API-Schlüssel (Cesium ion / Google) …</button>
           <button id="installBtn" class="link-btn" hidden>⤓ Als App installieren</button>
+          <button id="tutBtn2" class="link-btn">📘 Tutorial / Anleitung öffnen</button>
         </section>
       </div>
 
@@ -414,6 +416,24 @@
         </div>
       </div>
     </div>
+
+    <dialog id="tutDlg" class="glass tut-dlg" aria-labelledby="tutTitle">
+      <div class="tut-head">
+        <span class="tut-count muted small"></span>
+        <span class="spacer"></span>
+        <button id="tutClose" class="icon-btn" title="Schließen" aria-label="Tutorial schließen">✕</button>
+      </div>
+      <div class="tut-fig"></div>
+      <div class="tut-text">
+        <h2 class="tut-title" id="tutTitle"></h2>
+        <div class="tut-body"></div>
+      </div>
+      <div class="tut-foot">
+        <button id="tutPrev" class="btn ghost">← Zurück</button>
+        <div class="tut-dots"></div>
+        <button id="tutNext" class="btn primary">Weiter →</button>
+      </div>
+    </dialog>
 
     <dialog id="keysDlg" class="glass">
       <form method="dialog">
@@ -523,6 +543,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=19"></script>
+    <script type="module" src="js/app.js?v=20"></script>
   </body>
 </html>
