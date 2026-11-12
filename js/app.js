@@ -1,19 +1,19 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=20";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=20";
-import { getHelicopterDef } from "./models.js?v=20";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=20";
-import { VisualMode } from "./nvg.js?v=20";
-import { Hud } from "./hud.js?v=20";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=20";
-import { createCapture } from "./capture.js?v=20";
-import { initTutorial } from "./tutorial.js?v=20";
-import { loadOsmBuildings, obstacleHeights } from "./buildings.js?v=20";
-import { loadObstacles } from "./obstacles.js?v=20";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=20";
-import { renderPlate } from "./plate.js?v=20";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=20";
+import * as geo from "./geo.js?v=21";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=21";
+import { getHelicopterDef } from "./models.js?v=21";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=21";
+import { VisualMode } from "./nvg.js?v=21";
+import { Hud } from "./hud.js?v=21";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=21";
+import { createCapture } from "./capture.js?v=21";
+import { initTutorial } from "./tutorial.js?v=21";
+import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=21";
+import { loadObstacles, obstacleQuery } from "./obstacles.js?v=21";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=21";
+import { renderPlate } from "./plate.js?v=21";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=21";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -687,6 +687,13 @@ function excludes() {
 
 async function sampleGroundForMission(m, pts, onStatus) {
   // Bodenhöhen im Höhensystem der Szene + Hindernisse
+  const wantTrees = cfg.trees && data.source !== "google"; // Google 3D Tiles enthalten Bewuchs bereits
+  // OSM-Daten sofort parallel anfordern – Gelände wird währenddessen abgetastet
+  prefetchOsm(m, {
+    buildings: (data.source === "standard" && (cfg.buildings || cfg.obstacles)) || (data.source === "ion" && cfg.obstacles),
+    obstacles: cfg.obstShow,
+    trees: wantTrees,
+  });
   onStatus("Gelände-Höhenprofil (AWS Terrain Tiles) …");
   const terr = await sampleTerrarium(pts, 14);
   let ground = terr.slice();
@@ -704,20 +711,32 @@ async function sampleGroundForMission(m, pts, onStatus) {
     ground = cs.map((c, i) => (isFinite(c.height) ? c.height : terr[i]));
     const diffs = ground.map((g, i) => g - terr[i]).sort((a, b) => a - b);
     N = diffs[Math.floor(diffs.length / 2)];
-    if (cfg.obstacles && data.tileset) {
-      onStatus("OSM Buildings – Hindernisse entlang der Route …");
+    if (cfg.obstacles) {
+      // Gebäudehöhen aus den OSM-Grundrissen (schnell, parallel geladen); nur wenn Overpass
+      // nicht antwortet, wird das 3D-Tileset entlang der Route abgetastet (langsam).
+      onStatus("OSM-Gebäude entlang der Route …");
       try {
-        const step = Math.max(1, Math.round(pts.length / 600));
-        const sub = cartos().filter((_, i) => i % step === 0);
-        const res = await withTimeout(scene.sampleHeightMostDetailed(sub, excludes()), 45000);
-        res.forEach((c, k) => {
-          if (c && isFinite(c.height)) {
-            for (let j = k * step; j < Math.min((k + 1) * step, pts.length); j++)
-              obstacles[j] = Math.max(obstacles[j], c.height);
-          }
-        });
+        const gN = N;
+        const fps = await buildingFootprints(m, onStatus, (p) => sampleTerrarium(p, 14).then((h) => h.map((x) => x + gN)));
+        obstacles = obstacleHeights(pts, fps);
       } catch (e) {
-        console.warn("Hindernisabfrage", e);
+        console.warn("Overpass-Gebäude", e);
+        if (data.tileset) {
+          onStatus("OSM Buildings – Hindernisse entlang der Route …");
+          try {
+            const step = Math.max(1, Math.round(pts.length / 600));
+            const sub = cartos().filter((_, i) => i % step === 0);
+            const res = await withTimeout(scene.sampleHeightMostDetailed(sub, excludes()), 25000);
+            res.forEach((c, k) => {
+              if (c && isFinite(c.height)) {
+                for (let j = k * step; j < Math.min((k + 1) * step, pts.length); j++)
+                  obstacles[j] = Math.max(obstacles[j], c.height);
+              }
+            });
+          } catch (e2) {
+            console.warn("Hindernisabfrage", e2);
+          }
+        }
       }
     }
   } else if (data.source === "google") {
@@ -761,7 +780,6 @@ async function sampleGroundForMission(m, pts, onStatus) {
     }
   }
   // Leitungen, Masten, Windräder und Bäume (OSM) – in allen Datenquellen
-  const wantTrees = cfg.trees && data.source !== "google"; // Google 3D Tiles enthalten Bewuchs bereits
   if (cfg.obstShow || wantTrees) {
     try {
       await loadMissionObstacles(m, N, wantTrees, onStatus);
@@ -778,20 +796,67 @@ async function sampleGroundForMission(m, pts, onStatus) {
 }
 
 let obstKey = null;
+const obstBaseKey = (m, trees, obstacles = cfg.obstShow) =>
+  [m.start.lat, m.start.lon, m.tgt.lat, m.tgt.lon, trees, obstacles, cfg.forestHeight].map(String).join(",");
+
+/** Startet die Overpass-Abfragen sofort (Ergebnis wird geteilt/zwischengespeichert) */
+function prefetchOsm(m, { buildings = true, obstacles = true, trees = cfg.trees } = {}) {
+  const quiet = (p) => p.catch(() => {});
+  if (buildings) quiet(overpassQuery(buildingQuery(buildingPolygon(m))));
+  const q = obstacleQuery(m, { obstacles, trees, mobile: isMobile });
+  if (q) quiet(overpassQuery(q, () => {}, 95000));
+}
+
+// Gebäudekorridor: ±300 m entlang der Route, 900 m um die LZ (Array [lat, lon])
+function buildingPolygon(m) {
+  const c = m.courseStart;
+  const L = m.length;
+  const tgtSide = Math.max(L - 1100, 0);
+  const at = (s, off, side) => {
+    const p = geo.direct(m.start.lat, m.start.lon, c, s);
+    return off ? geo.direct(p.lat, p.lon, c + side * 90, off) : p;
+  };
+  const sFrom = Math.max(0, L - 20000);
+  const poly = [];
+  poly.push(at(sFrom, 300, -1), at(tgtSide, 300, -1), at(Math.max(L - 700, 0), 900, -1));
+  for (let a = -90; a <= 90; a += 15) poly.push(geo.direct(m.tgt.lat, m.tgt.lon, c + a, 900));
+  poly.push(at(Math.max(L - 700, 0), 900, 1), at(tgtSide, 300, 1), at(sFrom, 300, 1));
+  return poly.map((p) => [p.lat, p.lon]);
+}
+const routeKey = (m) =>
+  `${m.start.lat.toFixed(5)},${m.start.lon.toFixed(5)},${m.tgt.lat.toFixed(5)},${m.tgt.lon.toFixed(5)}`;
+
+/** Nur Gebäudegrundrisse (ohne 3D); mit sampleGround inkl. Bodenhöhen für das Höhenprofil */
+let fpCache = { key: null, list: null };
+async function buildingFootprints(m, onStatus, sampleGround = null) {
+  if (osmKey === routeKey(m) && data.osmFootprints?.length) return data.osmFootprints;
+  const key = routeKey(m) + (sampleGround ? ":g" + Math.round(sim.geoidN || 0) : "");
+  if (fpCache.key === key || (!sampleGround && fpCache.key?.startsWith(routeKey(m)))) return fpCache.list;
+  const res = await loadOsmBuildings(buildingPolygon(m), sampleGround, onStatus, { build3d: false });
+  fpCache = { key, list: res.footprints };
+  return res.footprints;
+}
+
+/** Hindernisdaten für die Plate: aus dem geladenen Anflug oder nur als 2D-Daten (schnell) */
+let plateObst = { key: null, plate: null };
+async function plateObstacles(m, onStatus) {
+  const base = obstBaseKey(m, cfg.trees, true);
+  if (data.obst && obstKey?.startsWith(base + ",")) return data.obst.plate;
+  if (plateObst.key === base) return plateObst.plate;
+  const r = await loadObstacles(scene, m, {
+    trees: cfg.trees,
+    obstacles: true,
+    forestHeight: cfg.forestHeight,
+    mobile: isMobile,
+    render: false,
+    onStatus,
+  });
+  plateObst = { key: base, plate: r.plate };
+  return r.plate;
+}
+
 async function loadMissionObstacles(m, N, trees, onStatus) {
-  const key = [
-    m.start.lat,
-    m.start.lon,
-    m.tgt.lat,
-    m.tgt.lon,
-    trees,
-    cfg.obstShow,
-    cfg.forestHeight,
-    data.source,
-    Math.round(N),
-  ]
-    .map(String)
-    .join(",");
+  const key = [obstBaseKey(m, trees), data.source, Math.round(N)].join(",");
   if (obstKey === key && data.obst) return;
   if (data.obst) {
     data.obst.destroy();
@@ -827,7 +892,7 @@ function osmSummary() {
 let osmKey = null;
 let osmErrors = [];
 async function loadStandardBuildings(m, onStatus) {
-  const key = `${m.start.lat.toFixed(5)},${m.start.lon.toFixed(5)},${m.tgt.lat.toFixed(5)},${m.tgt.lon.toFixed(5)}`;
+  const key = routeKey(m);
   if (osmKey === key && data.osm) {
     data.osm.show = cfg.buildings;
     return;
@@ -837,27 +902,7 @@ async function loadStandardBuildings(m, onStatus) {
     data.osm = null;
     data.osmFootprints = [];
   }
-  // Korridor: ±300 m entlang der Route, 900 m um die LZ
-  const c = m.courseStart;
-  const L = m.length;
-  const tgtSide = Math.max(L - 1100, 0);
-  const at = (s, off, side) => {
-    const p = geo.direct(m.start.lat, m.start.lon, c, s);
-    return off ? geo.direct(p.lat, p.lon, c + side * 90, off) : p;
-  };
-  const sFrom = Math.max(0, L - 20000);
-  const poly = [];
-  poly.push(at(sFrom, 300, -1), at(tgtSide, 300, -1), at(Math.max(L - 700, 0), 900, -1));
-  for (let a = -90; a <= 90; a += 15) {
-    const p = geo.direct(m.tgt.lat, m.tgt.lon, c + a, 900);
-    poly.push(p);
-  }
-  poly.push(at(Math.max(L - 700, 0), 900, 1), at(tgtSide, 300, 1), at(sFrom, 300, 1));
-  const res = await loadOsmBuildings(
-    poly.map((p) => [p.lat, p.lon]),
-    (pts) => sampleTerrarium(pts, 14),
-    onStatus,
-  );
+  const res = await loadOsmBuildings(buildingPolygon(m), (pts) => sampleTerrarium(pts, 14), onStatus);
   data.osmFootprints = res.footprints;
   if (res.primitive) {
     data.osm = scene.primitives.add(res.primitive);
@@ -876,29 +921,28 @@ async function makePlate() {
   if (!m.ok) return toast(m.error || "Eingaben prüfen", true);
   $("plateBtn").disabled = true;
   try {
-    loading("Approach Plate", "OSM-Hindernisse werden geladen …");
-    if (data.source !== cfg.source) await setupData();
+    // Für die Plate reicht 2D: Satellitenbild + OSM-Grundrisse/Hindernisse, kein 3D-Aufbau
+    loading("Approach Plate", "OSM-Gebäude und Hindernisse werden geladen …");
     osmErrors = [];
     const status = (t) => loading(null, t);
-    try {
-      await loadStandardBuildings(m, status);
-      if (data.osm) data.osm.show = data.source === "standard" && cfg.buildings;
-    } catch (e) {
-      console.warn(e);
-      osmErrors.push("Gebäude");
-    }
-    try {
-      await loadMissionObstacles(m, sim.geoidN || 0, cfg.trees && data.source !== "google", status);
-    } catch (e) {
-      console.warn(e);
-      osmErrors.push("Hindernisse/Bäume");
-    }
-    loading(null, "Elevation …");
-    const [elev] = await sampleTerrarium([m.tgt], 14);
+    prefetchOsm(m, { buildings: true, obstacles: true, trees: cfg.trees });
+    const elevP = sampleTerrarium([m.tgt], 14).catch(() => [NaN]);
+    const [fps, ob] = await Promise.all([
+      buildingFootprints(m, status).catch((e) => {
+        console.warn(e);
+        osmErrors.push("Gebäude");
+        return [];
+      }),
+      plateObstacles(m, status).catch((e) => {
+        console.warn(e);
+        osmErrors.push("Hindernisse/Bäume");
+        return {};
+      }),
+    ]);
+    const [elev] = await elevP;
     loading(false);
     const depIn = parseFloat(cfg.plDep);
     const depMag = isFinite(depIn) ? depIn : m.courseMag;
-    const ob = data.obst?.plate || {};
     const P = {
       header: {
         callsign: cfg.plCallsign,
@@ -919,7 +963,7 @@ async function makePlate() {
       unit: UNIT(),
       lzDiameter: Math.max(10, cfg.plDiameter || 60),
       obstacles: {
-        buildings: data.osmFootprints || [],
+        buildings: fps || [],
         lzTrees: ob.lzTrees || [],
         towers: ob.towers || [],
         points: ob.points || [],
@@ -1073,7 +1117,7 @@ async function startMission() {
     setView(sim.view);
     // Kacheln für den Startpunkt laden lassen
     loading("Geodaten werden geladen", "Luftbilder und Gelände am Startpunkt …");
-    await waitForTiles(20000, Cesium.Cartographic.fromDegrees(m.start.lon, m.start.lat), ground[0]);
+    await waitForTiles(15000, Cesium.Cartographic.fromDegrees(m.start.lon, m.start.lat), ground[0]);
     loading(false);
     closePanel();
     setPlaying(true);
@@ -1108,8 +1152,11 @@ function waitForTiles(maxMs, carto, expected) {
         const h = globe.getHeight(carto);
         near = isFinite(h) && Math.abs(h - expected) < 15;
       }
-      calm = loaded && near ? calm + 1 : 0;
-      if (calm > 8 || performance.now() - t0 > maxMs) resolve();
+      // Sobald das Gelände am Startpunkt stimmt, nach spätestens 4 s losfliegen –
+      // entfernte Kacheln laden während des Vorlaufs zum IP nach.
+      const t = performance.now() - t0;
+      calm = near && (loaded || t > 4000) ? calm + 1 : 0;
+      if (calm > 8 || t > maxMs) resolve();
       else requestAnimationFrame(check);
     };
     setTimeout(check, 400);

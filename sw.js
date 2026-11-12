@@ -1,7 +1,7 @@
 // Service Worker: macht IP2TGT als Web-App installierbar. Eigene Dateien werden
 // "network first" geladen (Updates kommen sofort an) und für den Notfall zwischengespeichert;
 // Karten, Gelände und Bibliotheken anderer Server werden nicht angefasst.
-const CACHE = "ip2tgt-v20";
+const CACHE = "ip2tgt-v21";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest"])));

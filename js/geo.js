@@ -1,8 +1,8 @@
 // Geodäsie, Koordinaten-Parser/-Formatierung und Missweisung (WMM2025).
 // Reine Funktionen ohne Cesium-Abhängigkeit (in Node testbar).
 
-import { forward as mgrsForward, toPoint as mgrsToPoint } from "./vendor/mgrs.esm.js?v=20";
-import { WMM2025 } from "./wmm2025.js?v=20";
+import { forward as mgrsForward, toPoint as mgrsToPoint } from "./vendor/mgrs.esm.js?v=21";
+import { WMM2025 } from "./wmm2025.js?v=21";
 
 export const NM = 1852; // m
 export const FT = 0.3048; // m

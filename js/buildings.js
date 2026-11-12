@@ -82,44 +82,143 @@ export function pointInRing(lat, lon, ring) {
 }
 
 /** Overpass-Abfrage mit Ausweich-Servern. onTry(host) meldet den aktuellen Server. */
-export async function overpassQuery(q, onTry = () => {}, timeoutMs = 60000) {
-  let lastErr;
-  // Zwei Durchgänge über alle Server; Overpass begrenzt Anfragen pro Nutzer (HTTP 429)
-  // und meldet Zeitüberschreitungen teils mit HTTP 200 + "remark" bei leerem Ergebnis.
-  for (let round = 0; round < 2; round++) {
-    if (round) await new Promise((r) => setTimeout(r, 4000));
-    for (const ep of ENDPOINTS) {
-      try {
-        onTry(new URL(ep).host);
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-        const r = await fetch(ep, {
-          method: "POST",
-          body: "data=" + encodeURIComponent(q),
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
-        if (data.remark && /error|timed out|out of memory/i.test(data.remark)) throw new Error(data.remark);
-        return data;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
+// ---------------------------------------------------------------------------
+// Overpass mit Zwischenspeicher und gestaffelten Parallelanfragen
+// ---------------------------------------------------------------------------
+
+const memCache = new Map(); // Abfrage -> Promise (auch laufende Anfragen werden geteilt)
+const CACHE_NAME = "ip2tgt-osm-v1";
+const CACHE_TTL = 14 * 864e5; // OSM-Daten 14 Tage wiederverwenden
+const STAGGER_MS = 8000; // so lange auf einen Server warten, bevor zusätzlich der nächste gefragt wird
+
+function hashStr(s) {
+  let h1 = 0x811c9dc5,
+    h2 = 0x01000193;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = Math.imul(h2 ^ c, 2246822519);
   }
-  throw lastErr || new Error("Overpass nicht erreichbar");
+  return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36) + s.length.toString(36);
+}
+
+async function cacheGet(q) {
+  try {
+    if (!window.caches) return null;
+    const c = await caches.open(CACHE_NAME);
+    const r = await c.match(`https://cache.ip2tgt/overpass/${hashStr(q)}`);
+    if (!r) return null;
+    if (Date.now() - Number(r.headers.get("x-saved") || 0) > CACHE_TTL) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+async function cachePut(q, data) {
+  try {
+    if (!window.caches) return;
+    const c = await caches.open(CACHE_NAME);
+    await c.put(
+      `https://cache.ip2tgt/overpass/${hashStr(q)}`,
+      new Response(JSON.stringify(data), {
+        headers: { "content-type": "application/json", "x-saved": String(Date.now()) },
+      }),
+    );
+  } catch {
+    /* Speicher voll oder nicht verfügbar – dann eben ohne */
+  }
+}
+
+/** Eine Runde: Server gestaffelt starten; die erste gültige Antwort gewinnt, die übrigen werden abgebrochen */
+function overpassRound(q, onTry, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const ctrls = [];
+    let next = 0,
+      failed = 0,
+      done = false,
+      lastErr = null,
+      stagger = null;
+    const launch = () => {
+      if (done || next >= ENDPOINTS.length) return;
+      const ep = ENDPOINTS[next++];
+      clearTimeout(stagger);
+      stagger = setTimeout(launch, STAGGER_MS);
+      const ctrl = new AbortController();
+      ctrls.push(ctrl);
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      onTry(new URL(ep).host);
+      fetch(ep, {
+        method: "POST",
+        body: "data=" + encodeURIComponent(q),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        signal: ctrl.signal,
+      })
+        .then(async (r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+          if (data.remark && /error|timed out|out of memory/i.test(data.remark)) throw new Error(data.remark);
+          return data;
+        })
+        .then((data) => {
+          clearTimeout(timer);
+          if (done) return;
+          done = true;
+          clearTimeout(stagger);
+          ctrls.forEach((c) => c !== ctrl && c.abort());
+          resolve(data);
+        })
+        .catch((e) => {
+          clearTimeout(timer);
+          if (done) return;
+          lastErr = e;
+          if (++failed >= ENDPOINTS.length) {
+            done = true;
+            clearTimeout(stagger);
+            reject(lastErr);
+          } else launch(); // Fehler -> sofort den nächsten Server fragen
+        });
+    };
+    launch();
+  });
+}
+
+export function overpassQuery(q, onTry = () => {}, timeoutMs = 60000) {
+  if (!memCache.has(q)) {
+    const p = (async () => {
+      const cached = await cacheGet(q);
+      if (cached) return cached;
+      let data;
+      try {
+        data = await overpassRound(q, onTry, timeoutMs);
+      } catch {
+        // Overpass begrenzt Anfragen pro Nutzer (HTTP 429): kurz warten, ein zweites Mal
+        await new Promise((r) => setTimeout(r, 3000));
+        data = await overpassRound(q, onTry, timeoutMs);
+      }
+      cachePut(q, data);
+      return data;
+    })();
+    memCache.set(q, p);
+    p.catch(() => memCache.delete(q));
+  }
+  return memCache.get(q);
+}
+
+/** Overpass-Abfrage für Gebäude im Polygon (Array [lat, lon]) */
+export function buildingQuery(polygon) {
+  const poly = polygon.map(([la, lo]) => `${la.toFixed(6)} ${lo.toFixed(6)}`).join(" ");
+  return `[out:json][timeout:40];(way["building"](poly:"${poly}");relation["building"]["type"="multipolygon"](poly:"${poly}"););out geom qt 20000;`;
 }
 
 /**
  * Lädt Gebäude innerhalb des Polygons (Array [lat, lon]).
  * sampleGround(points[{lat,lon}]) -> Promise<number[]> liefert Bodenhöhen (Szenen-Höhensystem).
+ * opts.build3d = false: nur Grundrisse (ohne 3D-Körper), z. B. für die Approach Plate;
+ * ohne sampleGround auch ohne Bodenhöhen.
  */
-export async function loadOsmBuildings(polygon, sampleGround, onStatus = () => {}) {
-  const poly = polygon.map(([la, lo]) => `${la.toFixed(6)} ${lo.toFixed(6)}`).join(" ");
-  const q = `[out:json][timeout:40];(way["building"](poly:"${poly}");relation["building"]["type"="multipolygon"](poly:"${poly}"););out geom qt 20000;`;
-  const data = await overpassQuery(q, (host) => onStatus(`OSM-Gebäude werden geladen (${host}) …`));
+export async function loadOsmBuildings(polygon, sampleGround, onStatus = () => {}, opts = {}) {
+  const data = await overpassQuery(buildingQuery(polygon), (host) => onStatus(`OSM-Gebäude werden geladen (${host}) …`));
 
   const footprints = [];
   for (const el of data.elements || []) {
@@ -157,12 +256,15 @@ export async function loadOsmBuildings(polygon, sampleGround, onStatus = () => {
   }
   if (!footprints.length) return { primitive: null, footprints };
 
-  onStatus(`${footprints.length} Gebäude – Bodenhöhen werden bestimmt …`);
-  const grounds = await sampleGround(footprints.map((f) => f.centroid));
-  footprints.forEach((f, i) => {
-    f.base = grounds[i] ?? 0;
-    f.top = f.base + f.height;
-  });
+  if (sampleGround) {
+    onStatus(`${footprints.length} Gebäude – Bodenhöhen werden bestimmt …`);
+    const grounds = await sampleGround(footprints.map((f) => f.centroid));
+    footprints.forEach((f, i) => {
+      f.base = grounds[i] ?? 0;
+      f.top = f.base + f.height;
+    });
+  }
+  if (opts.build3d === false) return { primitive: null, footprints };
 
   const instances = [];
   footprints.forEach((f, i) => {

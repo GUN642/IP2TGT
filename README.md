@@ -45,6 +45,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 
 Schlüssel werden über „🔑 API-Schlüssel“ eingegeben und nur lokal im Browser (localStorage) gespeichert.
 Alle Daten werden zur Laufzeit online abgerufen; die Nutzungsbedingungen der jeweiligen Anbieter gelten.
+OSM-Abfragen (Overpass) laufen parallel, fragen bei langsamer Antwort nach 8 s zusätzlich den nächsten Server und werden 14 Tage im Browser zwischengespeichert – dieselbe Route lädt beim nächsten Mal fast sofort. Die Approach Plate lädt nur 2D-Daten (Satellitenbild, Grundrisse, Hindernisse), ohne 3D-Aufbau.
 
 ## Bedienung
 

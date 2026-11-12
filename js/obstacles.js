@@ -3,8 +3,8 @@
 // Windkraftanlagen, Wald/Gehölz sowie Einzelbäume und Baumreihen.
 // Höhen: OSM-Tag "height" wo erfasst, sonst typische Werte (als "geschätzt" markiert).
 
-import { overpassQuery, parseNum } from "./buildings.js?v=20";
-import { treeChunkGlb } from "./models.js?v=20";
+import { overpassQuery, parseNum } from "./buildings.js?v=21";
+import { treeChunkGlb } from "./models.js?v=21";
 
 const Cesium = window.Cesium;
 const DEG = Math.PI / 180;
@@ -257,20 +257,16 @@ function leafKind(tags) {
 // Hauptfunktion
 // ---------------------------------------------------------------------------
 
-/**
- * @param m Mission {start, tgt, length}
- * @param o {trees, obstacles, forestHeight, mobile, shadows, sampleGround(points)->Promise<number[]>, onStatus}
- */
-export async function loadObstacles(scene, m, o) {
+const W_OBS = 1200,
+  R_OBS = 1800; // Hindernisse: Korridorbreite (±) und Radius um die LZ
+const treeArea = (mobile) => (mobile ? [180, 450] : [260, 650]); // Bäume
+
+/** Overpass-Abfrage für Hindernisse und Vegetation (auch zum Vorab-Laden) */
+export function obstacleQuery(m, o) {
   const f = makeFrame(m);
-  const L = f.L;
-  const W_OBS = 1200,
-    R_OBS = 1800; // Hindernisse
-  const W_TREE = o.mobile ? 180 : 260,
-    R_TREE = o.mobile ? 450 : 650; // Bäume
+  const [W_TREE, R_TREE] = treeArea(o.mobile);
   const polyObs = corridorPolygon(f, W_OBS, R_OBS);
   const polyTree = corridorPolygon(f, W_TREE, R_TREE);
-
   const parts = [];
   if (o.obstacles) {
     parts.push(
@@ -293,6 +289,21 @@ export async function loadObstacles(scene, m, o) {
       `out geom;`,
     );
   }
+  return parts.length ? `[out:json][timeout:90];` + parts.join("") : null;
+}
+
+/**
+ * @param m Mission {start, tgt, length}
+ * @param o {trees, obstacles, forestHeight, mobile, shadows, sampleGround(points)->Promise<number[]>, onStatus,
+ *           render (false = nur Daten für die 2D-Plate: keine 3D-Objekte, keine Bodenhöhen)}
+ */
+export async function loadObstacles(scene, m, o) {
+  const f = makeFrame(m);
+  const L = f.L;
+  const [W_TREE, R_TREE] = treeArea(o.mobile);
+  const render = o.render !== false;
+  const sampleGround = render ? o.sampleGround : (p) => Promise.resolve(p.map(() => 0));
+  const q = obstacleQuery(m, o);
   const result = {
     primitives: [],
     groups: { obstacles: [], trees: [] },
@@ -305,8 +316,7 @@ export async function loadObstacles(scene, m, o) {
     result.primitives.push(prim);
     result.groups[group].push(prim);
   };
-  if (!parts.length) return result;
-  const q = `[out:json][timeout:90];` + parts.join("");
+  if (!q) return result;
   const data = await overpassQuery(q, (host) => o.onStatus(`Hindernisse & Vegetation (OSM, ${host}) …`), 95000);
   const els = data.elements || [];
 
@@ -379,7 +389,7 @@ export async function loadObstacles(scene, m, o) {
 
   // Bodenhöhen für Masten und Punkthindernisse
   const towerList = [...towerUse.values()];
-  const gAll = await o.sampleGround([...towerList, ...pts]);
+  const gAll = await sampleGround([...towerList, ...pts]);
   towerList.forEach((t, i) => {
     t.base = gAll[i];
     t.top = t.base + t.h;
@@ -390,9 +400,10 @@ export async function loadObstacles(scene, m, o) {
   });
 
   const instances = [];
-  for (const t of towerList) pylonInstances(instances, t.lat, t.lon, t.base - 1, t.h + 1, t.minor, t.heading);
-  for (const p of pts)
-    pointInstances(instances, p.lat, p.lon, p.base - 1, { ...p.spec, top: p.spec.top + 1, hub: (p.spec.hub || 0) + 1 });
+  if (render) for (const t of towerList) pylonInstances(instances, t.lat, t.lon, t.base - 1, t.h + 1, t.minor, t.heading);
+  if (render)
+    for (const p of pts)
+      pointInstances(instances, p.lat, p.lon, p.base - 1, { ...p.spec, top: p.spec.top + 1, hub: (p.spec.hub || 0) + 1 });
 
   // Leiterseile
   const wires = new Cesium.PolylineCollection();
@@ -408,7 +419,7 @@ export async function loadObstacles(scene, m, o) {
       const arm = Math.max(5, Math.min(sp.a.h, sp.b.h) * 0.17);
       conductors.push([-arm * 0.9, 0.78], [arm * 0.9, 0.78], [-arm * 0.65, 0.9], [arm * 0.65, 0.9], [0, 1.0]);
     }
-    for (const [off, rel] of conductors) {
+    for (const [off, rel] of render ? conductors : []) {
       const a = { ...A, h: sp.a.base + sp.a.h * rel },
         b = { ...B, h: sp.b.base + sp.b.h * rel };
       wires.add({
@@ -443,7 +454,7 @@ export async function loadObstacles(scene, m, o) {
   result.counts.spans = spans.length;
   result.counts.obstacles = towerList.length + pts.length;
 
-  if (instances.length) {
+  if (render && instances.length) {
     add(
       "obstacles",
       new Cesium.Primitive({
@@ -454,7 +465,7 @@ export async function loadObstacles(scene, m, o) {
       }),
     );
   }
-  if (spans.length) add("obstacles", wires);
+  if (render && spans.length) add("obstacles", wires);
 
   // --------------------------- Bäume ---------------------------
   const trees = []; // {u, v, h, kind}
@@ -535,10 +546,13 @@ export async function loadObstacles(scene, m, o) {
       }
     }
     trees.push(...list);
-    if (trees.length) {
+    if (!render) {
+      // 2D: nur Lage der Bäume (für die Plate), keine Bodenhöhen und keine 3D-Modelle
+      for (const t of trees) Object.assign(t, f.fromUV(t.u, t.v), { base: 0 });
+    } else if (trees.length) {
       o.onStatus(`${trees.length.toLocaleString("de-DE")} Bäume werden platziert …`);
       const ll = trees.map((t) => f.fromUV(t.u, t.v));
-      const g = await o.sampleGround(ll);
+      const g = await sampleGround(ll);
       trees.forEach((t, i) => {
         t.lat = ll[i].lat;
         t.lon = ll[i].lon;
