@@ -1,19 +1,21 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=21";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=21";
-import { getHelicopterDef } from "./models.js?v=21";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=21";
-import { VisualMode } from "./nvg.js?v=21";
-import { Hud } from "./hud.js?v=21";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=21";
-import { createCapture } from "./capture.js?v=21";
-import { initTutorial } from "./tutorial.js?v=21";
-import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=21";
-import { loadObstacles, obstacleQuery } from "./obstacles.js?v=21";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=21";
-import { renderPlate } from "./plate.js?v=21";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=21";
+import * as geo from "./geo.js?v=22";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=22";
+import { getHelicopterDef } from "./models.js?v=22";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=22";
+import { VisualMode } from "./nvg.js?v=22";
+import { Hud } from "./hud.js?v=22";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=22";
+import { createCapture } from "./capture.js?v=22";
+import { initTutorial } from "./tutorial.js?v=22";
+import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=22";
+import { loadObstacles, obstacleQuery } from "./obstacles.js?v=22";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=22";
+import { renderPlate } from "./plate.js?v=22";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=22";
+import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=22";
+import { SkyFx } from "./skyfx.js?v=22";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -81,6 +83,10 @@ const DEFAULTS = {
   trees: true,
   obstShow: true,
   forestHeight: 22,
+  apDate: "",
+  apTime: "",
+  apTz: "local",
+  apRef: "lz",
 };
 const cfg = Object.assign({}, DEFAULTS, store.get("cfg", {}));
 // Einmalige Umstellung bestehender Einstellungen auf Cesium ion (Token ist eingebaut)
@@ -111,6 +117,10 @@ const keys = { ion: userIonToken || DEFAULT_ION_TOKEN, google: store.get("google
     unit: "distUnit",
     dec: "decel",
     lead: "leadIn",
+    date: "apDate",
+    time: "apTime",
+    tz: "apTz",
+    tref: "apRef",
   };
   let any = false;
   for (const [k, c] of Object.entries(map)) {
@@ -167,6 +177,18 @@ viewer.shadowMap.maximumDistance = 1200;
 viewer.clock.shouldAnimate = false;
 
 const visual = new VisualMode(viewer);
+const skyfx = new SkyFx(viewer, visual);
+// Liegt ein Bildpunkt (CSS-Pixel) hinter dem Cockpitrahmen (Dach, Streben, Instrumententafel)?
+skyfx.frameOccludes = (x, y) => {
+  if (sim.view !== "cockpit") return false;
+  const svg = $("cockpit");
+  svg.style.pointerEvents = "auto";
+  try {
+    return document.elementsFromPoint(x, y).some((e) => e !== svg && svg.contains(e));
+  } finally {
+    svg.style.pointerEvents = "";
+  }
+};
 const hud = new Hud($("hud"));
 
 // ---------------------------------------------------------------------------
@@ -384,8 +406,17 @@ function computeMission() {
   ].join("");
   updateElevation(tgt);
 
+  // Anflugzeit: geschätzte Zeiten für IP und Landung (vor dem Start ohne Trajektorie)
+  const hoverH = readNumber("hoverH", 10) * FT;
+  const tLead = leadIn / gs;
+  const tLand = tLead + ete + 3 + hoverH / Math.max(0.3, readNumber("descRate", 2) * FT);
+  const ref = approachRefDate();
+  const timeIP = new Date(ref.getTime() - (cfg.apRef === "lz" ? tLand - tLead : 0) * 1000);
+  const timeLZ = new Date(timeIP.getTime() + (tLand - tLead) * 1000);
   Object.assign(res, {
     ok: true,
+    timeIP,
+    timeLZ,
     tgt,
     ip,
     start,
@@ -402,7 +433,177 @@ function computeMission() {
     hoverH: readNumber("hoverH", 10) * FT,
     descRate: readNumber("descRate", 2) * FT,
   });
+  renderAstro(res);
+  if (!sim.traj) {
+    skyfx.setLocation(tgt);
+    skyfx.setTime(timeIP);
+  }
   return res;
+}
+
+// ---------------------------------------------------------------------------
+// Anflugzeit, Sonne & Mond
+// ---------------------------------------------------------------------------
+
+const pad2 = (n) => String(n).padStart(2, "0");
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+/** Eingegebene Uhrzeit (gilt für IP-Überflug oder Landung) als Date */
+function approachRefDate() {
+  const date = $("apDate").value || todayStr();
+  const time = $("apTime").value || "10:30";
+  const d = new Date(`${date}T${time}:00${cfg.apTz === "utc" ? "Z" : ""}`);
+  return isNaN(d) ? new Date() : d;
+}
+/** Uhrzeit in der gewählten Zeitzone: "21:35L" bzw. "20:35Z" */
+function fmtClock(d, tz = cfg.apTz, sec = false) {
+  const u = tz === "utc";
+  const h = u ? d.getUTCHours() : d.getHours();
+  const m = u ? d.getUTCMinutes() : d.getMinutes();
+  const s = u ? d.getUTCSeconds() : d.getSeconds();
+  return `${pad2(h)}:${pad2(m)}${sec ? ":" + pad2(s) : ""}${u ? "Z" : "L"}`;
+}
+const fmtAz = (az) => String(Math.round(((az % 360) + 360) % 360) % 360).padStart(3, "0");
+
+/** kleines Mondphasen-Symbol (SVG-Pfad), beleuchteter Rand rechts bei zunehmendem Mond */
+function moonIcon(cx, cy, r, k, waxing, cls = "") {
+  const rx = Math.abs(2 * k - 1) * r;
+  const s1 = waxing ? 1 : 0;
+  const s2 = waxing ? (k < 0.5 ? 0 : 1) : k < 0.5 ? 1 : 0;
+  const lit =
+    k > 0.985
+      ? `<circle cx="${cx}" cy="${cy}" r="${r}" class="moon-lit"/>`
+      : k < 0.015
+        ? ""
+        : `<path class="moon-lit" d="M${cx} ${cy - r}A${r} ${r} 0 0 ${s1} ${cx} ${cy + r}A${rx.toFixed(2)} ${r} 0 0 ${s2} ${cx} ${cy - r}Z"/>`;
+  return `<g class="${cls}"><circle cx="${cx}" cy="${cy}" r="${r}" class="moon-dark"/>${lit}</g>`;
+}
+function sunIcon(cx, cy, r, cls = "") {
+  let rays = "";
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4;
+    rays += `M${(cx + Math.cos(a) * r * 1.35).toFixed(1)} ${(cy + Math.sin(a) * r * 1.35).toFixed(1)}L${(cx + Math.cos(a) * r * 1.9).toFixed(1)} ${(cy + Math.sin(a) * r * 1.9).toFixed(1)}`;
+  }
+  return `<g class="sun-ic ${cls}"><circle cx="${cx}" cy="${cy}" r="${r}"/><path d="${rays}"/></g>`;
+}
+
+/** Himmelsdiagramm, Anflugkurs oben: Mitte = Zenit, Rand = Horizont */
+function skyPlot(a, courseTrue, courseMag) {
+  const S = 176,
+    c = S / 2,
+    R = 72;
+  const pt = (rel, alt) => {
+    const r = alt >= 0 ? R * (1 - alt / 90) : R + 7;
+    return [c + r * Math.sin(rel * DEG), c - r * Math.cos(rel * DEG)];
+  };
+  const sector = (a0, a1, alt0, alt1) => {
+    const r0 = R * (1 - alt1 / 90),
+      r1 = R * (1 - alt0 / 90);
+    const p = (r, an) => `${(c + r * Math.sin(an * DEG)).toFixed(1)} ${(c - r * Math.cos(an * DEG)).toFixed(1)}`;
+    return `M${p(r1, a0)}A${r1} ${r1} 0 0 1 ${p(r1, a1)}L${p(r0, a1)}A${r0} ${r0} 0 0 0 ${p(r0, a0)}Z`;
+  };
+  let svg = `<svg viewBox="0 0 ${S} ${S}" class="skyplot" role="img" aria-label="Sonne und Mond relativ zum Anflugkurs">`;
+  svg += `<circle cx="${c}" cy="${c}" r="${R}" class="hz"/>`;
+  svg += `<circle cx="${c}" cy="${c}" r="${R * (2 / 3)}" class="ring"/><circle cx="${c}" cy="${c}" r="${R / 3}" class="ring"/>`;
+  svg += `<path d="${sector(-30, 30, 0, 25)}" class="zone-glare"/>`;
+  svg += `<path d="${sector(-20, 20, 0, 20)}" class="zone-nvg"/>`;
+  for (const [deg, l] of [
+    [90, "R"],
+    [180, ""],
+    [270, "L"],
+  ]) {
+    const [x, y] = pt(deg, -9);
+    if (l) svg += `<text x="${x}" y="${y + 3}" class="lbl">${l}</text>`;
+  }
+  svg += `<path d="M${c} ${c + 9}L${c} ${c - R + 4}" class="crs"/><path d="M${c - 5} ${c - R + 12}L${c} ${c - R + 3}L${c + 5} ${c - R + 12}" class="crs"/>`;
+  svg += `<text x="${c}" y="9" class="crs-t">${geo.fmtCourse(courseMag)}°M</text>`;
+  svg += `<text x="${c + R * 0.5 + 3}" y="${c - R * 0.88}" class="zl">Blendzone</text>`;
+  // Gestirne
+  const sRel = a.sun.az - courseTrue;
+  const mRel = a.moon.az - courseTrue;
+  const [mx, my] = pt(mRel, a.moon.alt);
+  const [sx, sy] = pt(sRel, a.sun.alt);
+  svg += moonIcon(mx, my, 6.5, a.moon.illum, a.moon.waxing, a.moon.alt < 0 ? "below" : "");
+  svg += sunIcon(sx, sy, 5, a.sun.alt < 0 ? "below" : "");
+  svg += `</svg>`;
+  return svg;
+}
+
+/** Kurzzeilen für die Approach Plate; "!" am Anfang = Warnzeile */
+function plateAstro(m) {
+  const a = sunMoon(m.timeLZ, m.tgt.lat, m.tgt.lon);
+  const v = m.variation;
+  const otherTz = cfg.apTz === "utc" ? "local" : "utc";
+  const light = { DAY: "DAY", CIVIL: "CIVIL TWILIGHT", NAUTICAL: "NAUT. TWILIGHT", HLL: "NIGHT · HLL", LLL: "NIGHT · LLL" }[a.light];
+  const lines = [
+    `L-TIME ${fmtClock(m.timeLZ)} (${fmtClock(m.timeLZ, otherTz)}) · ${cfg.apTz === "utc" ? m.timeLZ.toISOString().slice(0, 10) : `${m.timeLZ.getFullYear()}-${pad2(m.timeLZ.getMonth() + 1)}-${pad2(m.timeLZ.getDate())}`}`,
+    `SUN  ${fmtAz(a.sun.az - v)}°M  ${a.sun.alt >= 0 ? "+" : ""}${Math.round(a.sun.alt)}°`,
+    `MOON ${fmtAz(a.moon.az - v)}°M  ${a.moon.alt >= 0 ? "+" : ""}${Math.round(a.moon.alt)}° · ${Math.round(a.moon.illum * 100)} % · ${a.moon.diamArcmin.toFixed(1)}′`,
+    `${light} · ${a.lux >= 10 ? Math.round(a.lux) : a.lux.toExponential(1)} lx`,
+  ];
+  const top = assess(a, m.courseTrue).find((x) => x.level === "danger");
+  if (top) lines.push(top.icon === "☀" ? "!SUN AHEAD – GLARE ON FINAL" : "!MOON AHEAD – NVG GAIN DROPS");
+  return lines;
+}
+
+let astroSeq = 0;
+function renderAstro(m) {
+  const el = $("astroInfo");
+  if (!m || !m.tgt) return (el.innerHTML = "");
+  const seq = ++astroSeq;
+  const mid = new Date((m.timeIP.getTime() + m.timeLZ.getTime()) / 2);
+  const aIP = sunMoon(m.timeIP, m.tgt.lat, m.tgt.lon);
+  const a = sunMoon(m.timeLZ, m.tgt.lat, m.tgt.lon);
+  const am = sunMoon(mid, m.tgt.lat, m.tgt.lon);
+  const ev = astroEvents(new Date(mid.getTime() - 12 * 3600e3), new Date(mid.getTime() + 12 * 3600e3), m.tgt.lat, m.tgt.lon);
+  if (seq !== astroSeq) return;
+  const v = m.variation;
+  const otherTz = cfg.apTz === "utc" ? "local" : "utc";
+  const rel = (az) => relText(az - m.courseTrue);
+  const deg = (x) => `${x >= 0 ? "" : "−"}${Math.abs(x).toFixed(1)}°`;
+  const items = assess(am, m.courseTrue);
+  const lightCls = { DAY: "day", CIVIL: "tw", NAUTICAL: "tw", HLL: "hll", LLL: "lll" }[am.light];
+  const luxTxt = am.lux >= 10 ? `${Math.round(am.lux).toLocaleString("de-DE")} lx` : `${am.lux.toExponential(1).replace(".", ",")} lx`;
+  const evTxt = ev
+    .filter((e) => e.code !== "BMCT" && e.code !== "EECT")
+    .map((e) => `<span class="ev ${e.body}" title="${e.label}"><b>${e.code}</b> ${fmtClock(e.t)}</span>`)
+    .join("");
+  const moonBelow = a.moon.alt < -0.5;
+  el.innerHTML = `
+    <div class="astro-time">
+      <span><label>IP</label>${fmtClock(m.timeIP)} <i>${fmtClock(m.timeIP, otherTz)}</i></span>
+      <span><label>LZ</label>${fmtClock(m.timeLZ)} <i>${fmtClock(m.timeLZ, otherTz)}</i></span>
+      <span class="light ${lightCls}" title="Beleuchtungsstärke am Boden (Richtwert, klarer Himmel). HLL/LLL-Grenze 0,0022 lx">${LIGHT_LABEL[am.light]} · ${luxTxt}</span>
+    </div>
+    <div class="astro-main">
+      ${skyPlot(am, m.courseTrue, m.courseMag)}
+      <div class="astro-cards">
+        <div class="acard sun ${a.sun.alt < -0.833 ? "down" : ""}">
+          <h3>${sunIcon(8, 8, 3.6)} Sonne</h3>
+          <dl>
+            <dt>Azimut</dt><dd>${fmtAz(a.sun.az)}°T · ${fmtAz(a.sun.az - v)}°M</dd>
+            <dt>Höhe</dt><dd>${deg(a.sun.alt)}${a.sun.alt < -0.833 ? " (unter Horizont)" : ""}</dd>
+            <dt>Richtung</dt><dd>${rel(a.sun.az)}</dd>
+          </dl>
+        </div>
+        <div class="acard moon ${moonBelow ? "down" : ""}">
+          <h3><svg viewBox="0 0 16 16" width="16" height="16">${moonIcon(8, 8, 6.5, a.moon.illum, a.moon.waxing)}</svg> Mond</h3>
+          <dl>
+            <dt>Azimut</dt><dd>${fmtAz(a.moon.az)}°T · ${fmtAz(a.moon.az - v)}°M</dd>
+            <dt>Höhe</dt><dd>${deg(a.moon.alt)}${moonBelow ? " (unter Horizont)" : ""}</dd>
+            <dt>Richtung</dt><dd>${rel(a.moon.az)}</dd>
+            <dt>Beleuchtet</dt><dd><b>${Math.round(a.moon.illum * 100)} %</b> · ${a.moon.phase}</dd>
+            <dt>Größe</dt><dd>${a.moon.diamArcmin.toFixed(1)}′ · ${Math.round(a.moon.sizePct)} %</dd>
+            <dt>Helligkeit</dt><dd>${a.moon.mag.toFixed(1)} mag · ${Math.round(Math.pow(10, -0.4 * (a.moon.mag + 12.73)) * 100)} % Vollmond</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+    ${Math.abs(aIP.sun.alt - a.sun.alt) > 1 || Math.abs(aIP.moon.alt - a.moon.alt) > 1 ? `<div class="muted small">Am IP: Sonne ${deg(aIP.sun.alt)}, Mond ${deg(aIP.moon.alt)}</div>` : ""}
+    <ul class="impact">${items.map((it) => `<li class="${it.level}"><span>${it.icon}</span>${it.text}</li>`).join("")}</ul>
+    <div class="events">${evTxt || '<span class="muted">keine Auf-/Untergänge ±12 h</span>'}</div>`;
 }
 
 let elevSeq = 0;
@@ -668,6 +869,7 @@ const sim = {
   hudOn: true,
   tube: false,
   head: { yaw: 0, pitch: -6, fov: 75 },
+  clock0: Date.now(),
   orbit: { yaw: 25, pitch: 14, range: 70 },
   lzFov: 55,
   gTGT: 0,
@@ -961,6 +1163,7 @@ async function makePlate() {
       depTrue: geo.norm360(depMag + m.variation),
       eteSec: (m.dist - m.decel) / m.gs + (2 * m.decel) / m.gs,
       unit: UNIT(),
+      astro: plateAstro(m),
       lzDiameter: Math.max(10, cfg.plDiameter || 60),
       obstacles: {
         buildings: fps || [],
@@ -1108,7 +1311,16 @@ async function startMission() {
     sim.lift = 0;
     sim.ralt = m.agl;
     drawRoute(m);
-    setSunForLocation(m.tgt);
+    // Simulationsuhr: eingegebene Zeit gilt für IP-Überflug oder Landung
+    const refMs = approachRefDate().getTime();
+    sim.clock0 = refMs - (cfg.apRef === "lz" ? sim.traj.times.landed : sim.traj.times.ip) * 1000;
+    skyfx.setLocation(m.tgt);
+    skyfx.setTime(new Date(sim.clock0));
+    const a0 = skyfx.astro;
+    if (a0) {
+      if (a0.sun.alt < -6 && visual.mode === "day") setMode("nvg");
+      else if (a0.sun.alt > 0 && visual.mode === "nvg") setMode("day");
+    }
     buildTimelineMarks();
     document.body.classList.add("sim");
     $("controls").hidden = false;
@@ -1161,13 +1373,6 @@ function waitForTiles(maxMs, carto, expected) {
     };
     setTimeout(check, 400);
   });
-}
-
-function setSunForLocation(p) {
-  const now = new Date();
-  // ca. 10:30 Uhr Ortszeit (Sonnenzeit) für gut sichtbare Schatten
-  const ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + (10.5 - p.lon / 15) * 3600e3;
-  viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date(ms));
 }
 
 function buildTimelineMarks() {
@@ -1279,6 +1484,7 @@ async function captureGlobe(center, courseDeg, wM, hM) {
     }
   };
   capturing = true;
+  skyfx.suspended = true;
   const loop = viewer.useDefaultRenderLoop;
   viewer.useDefaultRenderLoop = true;
   try {
@@ -1337,6 +1543,7 @@ async function captureGlobe(center, courseDeg, wM, hM) {
     globe.enableLighting = saved.lighting;
     hidden.forEach((p) => (p.show = true));
     capturing = false;
+    skyfx.suspended = false;
     viewer.useDefaultRenderLoop = loop;
   }
 }
@@ -1428,6 +1635,11 @@ scene.preUpdate.addEventListener(() => {
     }
   }
   sim.frame++;
+  if (!capturing) {
+    skyfx.setTime(new Date(sim.clock0 + sim.t * 1000));
+    const sh = cfg.shadows && visual.mode === "day" && skyfx.astro && skyfx.astro.sun.alt > 1;
+    if (viewer.shadows !== sh) viewer.shadows = sh;
+  }
   const st = sim.traj.sample(sim.t, sim.gTGT);
   // Sicherheitsnetz: liegt das gerenderte Gelände (z. B. noch grobe Kachel) über der
   // geplanten Flughöhe, wird die Darstellung sanft angehoben statt „unter die Erde“ zu fliegen.
@@ -1565,8 +1777,25 @@ scene.postRender.addEventListener(() => {
     ipScreen: project(ipW),
     fpvScreen: sim.view === "cockpit" ? project(fpvW) : null,
     message,
+    astro: hudAstro(m),
   });
 });
+
+/** Sonne/Mond für das HUD (Kursband) und Warnungen */
+function hudAstro(m) {
+  const s = skyfx.state;
+  if (!s) return null;
+  const a = s.astro;
+  let warn = null;
+  if (s.nvg && a.sun.alt > -4) warn = a.sun.alt > 0 ? "NVG ÜBERSTEUERT – TAGESLICHT" : "NVG – HELLE DÄMMERUNG";
+  else if (s.nvg && s.abc < 0.75) warn = `NVG GAIN ↓ ${Math.round((1 - s.abc) * 100)}% – MOND IM SICHTFELD`;
+  else if (!s.nvg && s.glare > 0.3) warn = `BLENDUNG – SONNE ${Math.round(s.sunAngle)}° VON BLICKRICHTUNG`;
+  return {
+    sun: { az: a.sun.az - m.variation, alt: a.sun.alt },
+    moon: { az: a.moon.az - m.variation, alt: a.moon.alt, illum: a.moon.illum, waxing: a.moon.waxing },
+    warn,
+  };
+}
 
 function updateTelemetry(st) {
   const m = sim.mission;
@@ -1577,6 +1806,18 @@ function updateTelemetry(st) {
   $("tHdg").textContent = geo.fmtCourse(st.heading - m.variation);
   $("tDist").textContent = (st.distToGo / UNIT().f).toFixed(2);
   $("tEte").textContent = geo.fmtTime(Math.max(0, sim.traj.times.hover - sim.t));
+  const s = skyfx.state;
+  if (s) {
+    const a = s.astro;
+    const v = m.variation;
+    const hd = (az) => relText(az - st.heading).replace("links", "L").replace("rechts", "R");
+    const h = hudAstro(m);
+    $("tAstro").innerHTML =
+      `<span class="clk">${fmtClock(new Date(sim.clock0 + sim.t * 1000), cfg.apTz, true)}</span>` +
+      `<span>☀ ${fmtAz(a.sun.az - v)}°M ${Math.round(a.sun.alt)}° · ${hd(a.sun.az)}</span>` +
+      `<span>☾ ${fmtAz(a.moon.az - v)}°M ${Math.round(a.moon.alt)}° · ${Math.round(a.moon.illum * 100)} % · ${hd(a.moon.az)}</span>` +
+      (h && h.warn ? `<span class="w">⚠ ${h.warn}</span>` : "");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1810,6 +2051,7 @@ function exitSim() {
   camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
   hud.clear();
   drawRoute(mission);
+  if (mission && mission.ok) skyfx.setTime(mission.timeIP);
 }
 
 // ---------------------------------------------------------------------------
@@ -1872,6 +2114,37 @@ $("routeShow").checked = cfg.routeShow;
 $("trees").checked = cfg.trees;
 $("obstShow").checked = cfg.obstShow;
 $("forestHeight").value = cfg.forestHeight;
+if (!cfg.apDate) cfg.apDate = todayStr();
+if (!cfg.apTime) cfg.apTime = "22:00";
+$("apDate").value = cfg.apDate;
+$("apTime").value = cfg.apTime;
+for (const id of ["apDate", "apTime"])
+  $(id).addEventListener("input", () => {
+    cfg[id] = $(id).value;
+    saveCfg();
+    onMissionInput();
+  });
+segInit("apTz", "apTz", (tz) => {
+  // dieselbe Uhrzeit, nur in der anderen Darstellung
+  const d = new Date(`${cfg.apDate}T${cfg.apTime}:00${tz === "utc" ? "" : "Z"}`);
+  if (!isNaN(d)) setApproachInputs(d, tz);
+  onMissionInput();
+});
+segInit("apRef", "apRef", onMissionInput);
+function setApproachInputs(d, tz = cfg.apTz) {
+  const u = tz === "utc";
+  cfg.apDate = u
+    ? `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
+    : `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  cfg.apTime = u ? `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}` : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  $("apDate").value = cfg.apDate;
+  $("apTime").value = cfg.apTime;
+  saveCfg();
+}
+$("apNow").addEventListener("click", () => {
+  setApproachInputs(new Date());
+  onMissionInput();
+});
 for (const k of ["plLz", "plCallsign", "plSequence", "plAlternate", "plDiameter", "plDep", "plRemarks"]) {
   $(k).value = cfg[k];
   $(k).addEventListener("change", saveInputs);
@@ -2099,6 +2372,10 @@ $("shareBtn").addEventListener("click", async () => {
   p.set("alt", cfg.agl);
   p.set("gs", cfg.gs);
   p.set("heli", cfg.heli);
+  p.set("date", cfg.apDate);
+  p.set("time", cfg.apTime);
+  p.set("tz", cfg.apTz);
+  p.set("tref", cfg.apRef);
   const url = `${location.origin}${location.pathname}#${p.toString()}`;
   history.replaceState(null, "", url);
   try {
@@ -2192,4 +2469,4 @@ setMode("day");
 })();
 
 // Für Tests/Debugging
-window.ip2tgt = { viewer, sim, cfg, data, startMission, setView, setMode, geo };
+window.ip2tgt = { viewer, sim, cfg, data, startMission, setView, setMode, geo, skyfx };

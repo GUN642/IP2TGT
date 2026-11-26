@@ -1,6 +1,6 @@
 // HUD-Symbologie (an ANVIS/HUD- bzw. DNVS-Darstellungen angelehnt) auf einem 2D-Canvas.
 
-import { fmtCourse, fmtTime, norm180, NM, FT, KT } from "./geo.js?v=21";
+import { fmtCourse, fmtTime, norm180, NM, FT, KT } from "./geo.js?v=22";
 
 export class Hud {
   constructor(canvas) {
@@ -98,6 +98,54 @@ export class Hud {
       c.clearRect(cx - bw / 2, tapeY + 14 * scale, bw, bh);
       c.strokeRect(cx - bw / 2, tapeY + 14 * scale, bw, bh);
       c.fillText(fmtCourse(hdg), cx, tapeY + 14 * scale + bh / 2 + 1);
+
+      // Sonne und Mond auf dem Kursband (Azimut, Höhe; Pfeil am Rand, wenn außerhalb)
+      if (d.astro) {
+        const y = tapeY + 48 * scale;
+        const items = [];
+        if (d.astro.sun.alt > -1) items.push(["sun", d.astro.sun]);
+        if (d.astro.moon.alt > -1) items.push(["moon", d.astro.moon]);
+        for (const [kind, b] of items) {
+          const off = norm180(b.az - hdg);
+          const inside = Math.abs(off) <= span / 2;
+          const x = cx + Math.max(-span / 2, Math.min(span / 2, off)) * ppd;
+          const r = 6 * scale;
+          c.save();
+          c.lineWidth = 1.4;
+          if (kind === "sun") {
+            c.beginPath();
+            c.arc(x, y, r * 0.65, 0, Math.PI * 2);
+            for (let i = 0; i < 8; i++) {
+              const an = (i * Math.PI) / 4;
+              c.moveTo(x + Math.cos(an) * r * 0.95, y + Math.sin(an) * r * 0.95);
+              c.lineTo(x + Math.cos(an) * r * 1.45, y + Math.sin(an) * r * 1.45);
+            }
+            c.stroke();
+          } else {
+            // Sichel/Phase: beleuchtete Seite rechts (zunehmend) bzw. links (abnehmend)
+            c.beginPath();
+            c.arc(x, y, r, 0, Math.PI * 2);
+            c.stroke();
+            const k = b.illum;
+            const dir = b.waxing ? 1 : -1;
+            c.beginPath();
+            c.ellipse(x, y, r, r, 0, -Math.PI / 2, Math.PI / 2, dir < 0);
+            c.ellipse(x, y, Math.abs(2 * k - 1) * r, r, 0, Math.PI / 2, -Math.PI / 2, (k < 0.5) === dir > 0);
+            c.fill();
+          }
+          c.font = font(10, 700);
+          // Höhe neben dem Symbol (zur Bandmitte hin), Pfeil nach außen, wenn außerhalb
+          const toR = off < 0;
+          c.textAlign = toR ? "left" : "right";
+          c.fillText(`${Math.round(b.alt)}°`, x + (toR ? 1 : -1) * (r * 1.6 + 2), y + 1);
+          if (!inside) {
+            c.font = font(12, 800);
+            c.textAlign = "center";
+            c.fillText(off < 0 ? "◄" : "►", x + (off < 0 ? -1 : 1) * 16 * scale, y);
+          }
+          c.restore();
+        }
+      }
     }
 
     // -------- Geschwindigkeit links / Höhen rechts --------------------------
@@ -304,6 +352,11 @@ export class Hud {
           y,
         );
       }
+    }
+    if (d.astro && d.astro.warn) {
+      c.font = font(14, 800);
+      c.textAlign = "center";
+      c.fillText(d.astro.warn, cx, top + 116 * scale + (d.hazard ? 4 : 0));
     }
     c.restore();
 

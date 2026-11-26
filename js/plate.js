@@ -1,8 +1,8 @@
 // Target Approach Plate: Kopfzeile, links Strecke IP -> TGT (Kurs oben), rechts LZ-Detail
 // mit LZ-Kreis, An-/Abflug und Abstandsmaßen zu Hindernissen. Zeichnung auf Canvas.
 
-import * as geo from "./geo.js?v=21";
-import { isBlankImage } from "./imagery.js?v=21";
+import * as geo from "./geo.js?v=22";
+import { isBlankImage } from "./imagery.js?v=22";
 
 const DEG = Math.PI / 180;
 const R_EARTH = 6371008.8;
@@ -524,6 +524,27 @@ async function renderPlateInner(canvas, P, onStatus, alive) {
     });
   }
   northIndicator(ctx, left.x + left.w * 0.74, left.y + left.h - 70, 44, P.courseTrue);
+  // Anflugzeit, Sonne & Mond (Briefing)
+  if (P.astro && P.astro.length) {
+    const fs = 17;
+    ctx.font = FONT(fs);
+    const lines = P.astro.length;
+    const hBox = lines * fs * 1.15 + 8;
+    const warnIdx = P.astro.findIndex((l) => l.startsWith("!"));
+    const txt = P.astro.map((l) => l.replace(/^!/, "")).join("\n");
+    const box = labelBox(ctx, txt, left.x + 12, left.y + 12 + hBox / 2, { size: fs, bg: "#ffffff" });
+    if (warnIdx >= 0) {
+      // Warnzeile rot hinterlegen
+      const lh = fs * 1.15;
+      ctx.fillStyle = "#e00000";
+      ctx.fillRect(box.x + 1, box.y + 4 + lh * warnIdx, box.w - 2, lh);
+      ctx.fillStyle = "#fff";
+      ctx.font = FONT(fs, 800);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(P.astro[warnIdx].slice(1), box.x + 7, box.y + 4 + lh * (warnIdx + 0.5));
+    }
+  }
 
   // ---------------- Rechts: LZ-Detail ----------------
   onStatus("Luftbild LZ-Detail …");

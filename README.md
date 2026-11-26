@@ -26,6 +26,16 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 - **Target Approach Plate** (Knopf „📄 Approach Plate erstellen“): Kopfzeile CALLSIGN / SEQUENCE / ALTERNATE LZ / LZ / GRID / ELEV / REMARKS, links Strecke IP→TGT (Kurs oben) mit Distanzmarken, Kurs/Zeit und Abflugkurs, rechts LZ-Detail mit LZ-Kreis, An-/Abflug und automatischen Abstandsmaßen zu Gebäuden, Bäumen, Masten und Leitungen. Export als PNG oder Drucken/PDF (A4 quer).
 - **Höhenprofil wählbar:** *Geländefolgend* (hält die Radarhöhe über Gelände/Hindernissen) oder *Konstant über LZ* (Höhe = LZ-Elevation + Anflughöhe, geradlinig gehalten bis zur Verzögerung; nur wo Gelände/Hindernisse höher sind, wird lokal auf die Anflughöhe über Grund angehoben – mit Hinweis).
 - **TAP-Kartenhintergrund:** Luftbild (automatisch: Bing über Cesium ion → Bildquelle des 3D-Globus → Esri → Senkrechtaufnahme aus dem 3D-Globus), gezielt *Luftbild Esri*, *Luftbild Bing* oder *Luftbild 3D-Globus*, Topografisch (OpenTopoMap) oder OpenStreetMap – auch direkt im Plate-Fenster umschaltbar. Die Statuszeile im Plate-Fenster zeigt, wie viele Kacheln je Quelle geladen wurden (hilfreich in Netzen mit Filtern/Proxys).
+- **Anflugzeit · Sonne & Mond:** Datum und Uhrzeit (Ortszeit oder Zulu) für den IP-Überflug oder die Landung eingeben („⟳ Jetzt“ übernimmt die aktuelle Zeit). Daraus werden Sonnen- und Mondstand an der LZ berechnet (nach Meeus, topozentrisch mit Mondparallaxe und Refraktion, Genauigkeit ~0,05°):
+  - Sonne: Azimut (°T/°M), Höhe, Richtung relativ zum Anflugkurs
+  - Mond: Azimut, Höhe, Richtung, **Beleuchtung in %** und Phase (zu-/abnehmend), scheinbare **Größe** (Bogenminuten, % vom Mittel), **Helligkeit** (mag, % vom Vollmond)
+  - Lichtlevel am Boden (Tag / bürgerl. / naut. Dämmerung / Nacht HLL bzw. LLL, Richtwert in lx), Auf-/Untergänge und Dämmerung (SR/SS, MR/MS, BMNT/EENT) ±12 h
+  - Himmelsdiagramm mit Anflugkurs oben, Blendzone und 40°-NVG-Sichtfeld; darunter die **Auswirkungen auf den Anflug** in Klartext (z. B. „Sonne 12° rechts voraus, 2° hoch: starke Blendung im Endanflug“ oder „Mond genau von vorne … Auto-Gain regelt herunter“)
+  - In der Simulation läuft die Uhr mit: Sonne/Mond stehen richtig am Himmel, Mond phasenrichtig, Gelände, Gebäude und Cockpitrahmen verdecken sie.
+  - **Blendung (Tag):** Sonne im/nahe dem Blickfeld erzeugt Streulicht-Schleier, Kontrastverlust, Strahlen und Reflexe – je näher an der Blickrichtung, desto stärker; HUD-Warnung `BLENDUNG`.
+  - **NVG-Auto-Gain (Nacht):** Kommt der Mond ins 40°-Sichtfeld der Brille, regelt die Helligkeitsautomatik auf den hellen Mond herunter – die Außensicht wird stark abgedunkelt, um den Mond entsteht ein Halo; Stärke abhängig von Beleuchtung und Höhe des Mondes; HUD-Warnung `NVG GAIN ↓`. Wenig Restlicht (LLL) macht das NVG-Bild verrauschter und kontrastärmer, Tageslicht/helle Dämmerung übersteuert es.
+  - HUD: Sonne/Mond-Symbole (mit Phase und Höhe) auf dem Kursband; Telemetrie mit Uhrzeit, Sonne und Mond. Beim Start wird bei Nacht automatisch NVG gewählt.
+  - Die Approach Plate enthält Uhrzeit, Sonne, Mond und Lichtlevel (mit Warnzeile bei Sonne/Mond von vorne); der Missions-Link enthält die Zeit.
 - **Hubschrauber:** CH-53G (6-Blatt-Hauptrotor, Heckrotor), CH-47F (Tandemrotor) oder H145M LUH SOF (4-Blatt-Hauptrotor, Fenestron, Kufen, Rettungswinde, EO/IR-Sensor, Außenlastträger), mit drehenden Rotoren und eigenem Cockpitrahmen.
 - **Ansichten:** Cockpit (rechter Pilotensitz, Umsehen mit der Maus), Außen (Orbit), Beobachter an der LZ, freie Kamera.
 - **HUD** mit Kursband, Kurs-Bug zum TGT, GS, Radarhöhe, MSL-Höhe, Steig-/Sinkrate, Horizont/Nicklage, Flugbahnvektor, LZ- und IP-Markern, Distanz und ETE.
@@ -94,7 +104,9 @@ js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Posit
 js/models.js        Prozedurale 3D-Modelle CH-53G / CH-47F / H145M (GLB im Speicher)
 js/hud.js           HUD-Symbologie
 js/cockpit.js       Cockpit-Rahmen (SVG)
-js/nvg.js           NVG-Post-Processing
+js/nvg.js           NVG-Post-Processing (inkl. Auto-Gain, Mond-Halo) und Sonnenblendung
+js/astro.js         Sonnen-/Mondstand, Phase, Helligkeit, Auf-/Untergänge, Bewertung der Auswirkungen
+js/skyfx.js         Sonne/Mond in der Szene: Mond-Billboard, Blendung, NVG-Restlicht und Auto-Gain
 js/vendor/mgrs.esm.js   proj4js/mgrs (MIT)
 js/wmm2025.js       WMM2025-Koeffizienten (NOAA/BGS, gemeinfrei)
 ```

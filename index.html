@@ -26,7 +26,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=21" rel="stylesheet" />
+    <link href="css/style.css?v=22" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -53,7 +53,7 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v21</span></p>
+          <p>Hubschrauber-Anflugsimulator · <span class="ver">v22</span></p>
         </div>
         <button id="tutBtn" class="icon-btn" title="Tutorial / Anleitung (?)" aria-label="Tutorial öffnen">?</button>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
@@ -176,6 +176,32 @@
             <div class="coord-meta" id="ipDerived"></div>
           </div>
           <div class="summary" id="summary"></div>
+        </section>
+
+        <section id="astroSec">
+          <h2><span class="dot sun"></span>Anflugzeit · Sonne &amp; Mond</h2>
+          <div class="grid2">
+            <label class="field"><span>Datum</span><input id="apDate" type="date" /></label>
+            <label class="field">
+              <span>Uhrzeit</span>
+              <div class="unit-input">
+                <input id="apTime" type="time" step="60" />
+                <div class="seg mini" id="apTz">
+                  <button data-v="local" class="on" title="Ortszeit dieses Geräts">LOC</button>
+                  <button data-v="utc" title="UTC / Zulu">Z</button>
+                </div>
+              </div>
+            </label>
+          </div>
+          <div class="unit-row">
+            <span>Uhrzeit gilt für</span>
+            <div class="seg mini" id="apRef">
+              <button data-v="ip">IP-Überflug</button>
+              <button data-v="lz" class="on">Landung LZ</button>
+            </div>
+          </div>
+          <button id="apNow" class="link-btn">⟳ Jetzt übernehmen</button>
+          <div id="astroInfo" class="astro"></div>
         </section>
 
         <section>
@@ -365,6 +391,7 @@
         <div><label>DIST</label><b id="tDist">—</b><i class="du">NM</i></div>
         <div><label>ETE</label><b id="tEte">—</b><i>mm:ss</i></div>
       </div>
+      <div class="tastro" id="tAstro"></div>
     </div>
 
     <!-- ===================== Steuerleiste ===================== -->
@@ -543,6 +570,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=21"></script>
+    <script type="module" src="js/app.js?v=22"></script>
   </body>
 </html>
