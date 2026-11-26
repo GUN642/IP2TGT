@@ -26,7 +26,7 @@
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-    <link href="css/style.css?v=22" rel="stylesheet" />
+    <link href="css/style.css?v=23" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.146.0/Build/Cesium/Cesium.js"></script>
   </head>
   <body>
@@ -53,7 +53,7 @@
         </div>
         <div>
           <h1>IP <span>→</span> TGT</h1>
-          <p>Hubschrauber-Anflugsimulator · <span class="ver">v22</span></p>
+          <p>Hubschrauber-Anflugsimulator · <button id="verBtn" class="ver" title="Changelog anzeigen">v23</button></p>
         </div>
         <button id="tutBtn" class="icon-btn" title="Tutorial / Anleitung (?)" aria-label="Tutorial öffnen">?</button>
         <button id="panelClose" class="icon-btn" title="Panel einklappen (P)">⟨</button>
@@ -369,6 +369,7 @@
           <button id="keysBtn" class="link-btn">🔑 API-Schlüssel (Cesium ion / Google) …</button>
           <button id="installBtn" class="link-btn" hidden>⤓ Als App installieren</button>
           <button id="tutBtn2" class="link-btn">📘 Tutorial / Anleitung öffnen</button>
+          <button id="clBtn" class="link-btn">📋 Changelog / Neuigkeiten</button>
         </section>
       </div>
 
@@ -459,6 +460,20 @@
         <button id="tutPrev" class="btn ghost">← Zurück</button>
         <div class="tut-dots"></div>
         <button id="tutNext" class="btn primary">Weiter →</button>
+      </div>
+    </dialog>
+
+    <dialog id="clDlg" class="glass cl-dlg" aria-labelledby="clTitle">
+      <div class="cl-head">
+        <h2 class="cl-title" id="clTitle">Changelog</h2>
+        <span class="spacer"></span>
+        <button id="clClose" class="icon-btn" title="Schließen" aria-label="Schließen">✕</button>
+      </div>
+      <div class="cl-body"></div>
+      <div class="cl-foot">
+        <button id="clAll" class="btn ghost" hidden>Ganzen Changelog anzeigen</button>
+        <span class="spacer"></span>
+        <button id="clOk" class="btn primary">OK</button>
       </div>
     </dialog>
 
@@ -570,6 +585,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="js/app.js?v=22"></script>
+    <script type="module" src="js/app.js?v=23"></script>
   </body>
 </html>

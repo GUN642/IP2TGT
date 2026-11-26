@@ -8,6 +8,8 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 
 ## Funktionen
 
+- **Neuigkeiten & Changelog:** Nach jedem Update zeigt die App einmalig, was neu ist. Den vollständigen Verlauf gibt es in der App (Versionsnummer oben im Panel oder „📋 Changelog“) und in [CHANGELOG.md](CHANGELOG.md).
+
 - **Tutorial:** Beim ersten Öffnen führt ein bebildertes Tutorial (10 Schritte) durch die App; später jederzeit über **?** oben im Planungspanel, „📘 Tutorial / Anleitung öffnen“ unter *Daten & Darstellung* oder die Taste `?`.
 
 - **TGT/LZ und IP** per **MGRS** oder **Lat/Lon** eingeben, auf einer **Karte auswählen** oder die **aktuelle Position (GPS)** übernehmen.
@@ -98,6 +100,7 @@ js/obstacles.js     Leitungen, Masten, Windräder, Wald/Bäume (OSM), Hindernisp
 js/plate.js         Target Approach Plate (Canvas, PNG/PDF-Export)
 js/capture.js       Screenshot und Videoaufnahme (Szene + Cockpit + HUD)
 js/tutorial.js      Bebildertes Tutorial (Bilder in img/tutorial/)
+js/changelog.js     Changelog-Daten und „Neu in dieser Version“-Popup (CHANGELOG.md parallel pflegen)
 js/imagery.js       Luftbild-Helfer (Esri per fetch, Bing über ion, Leerkachel-Erkennung)
 manifest.webmanifest, sw.js, icons/   Installierbare Web-App (PWA)
 js/mappicker.js     2D-Kartenauswahl (Leaflet), Ortssuche (Nominatim), GPS-Position

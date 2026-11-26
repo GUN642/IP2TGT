@@ -1,21 +1,22 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=22";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=22";
-import { getHelicopterDef } from "./models.js?v=22";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=22";
-import { VisualMode } from "./nvg.js?v=22";
-import { Hud } from "./hud.js?v=22";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=22";
-import { createCapture } from "./capture.js?v=22";
-import { initTutorial } from "./tutorial.js?v=22";
-import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=22";
-import { loadObstacles, obstacleQuery } from "./obstacles.js?v=22";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=22";
-import { renderPlate } from "./plate.js?v=22";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=22";
-import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=22";
-import { SkyFx } from "./skyfx.js?v=22";
+import * as geo from "./geo.js?v=23";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=23";
+import { getHelicopterDef } from "./models.js?v=23";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=23";
+import { VisualMode } from "./nvg.js?v=23";
+import { Hud } from "./hud.js?v=23";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=23";
+import { createCapture } from "./capture.js?v=23";
+import { initTutorial } from "./tutorial.js?v=23";
+import { initChangelog } from "./changelog.js?v=23";
+import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=23";
+import { loadObstacles, obstacleQuery } from "./obstacles.js?v=23";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=23";
+import { renderPlate } from "./plate.js?v=23";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=23";
+import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=23";
+import { SkyFx } from "./skyfx.js?v=23";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -2415,6 +2416,9 @@ $("shotBtn").addEventListener("click", takeScreenshot);
 const tutorial = initTutorial();
 $("tutBtn").addEventListener("click", () => tutorial.open());
 $("tutBtn2").addEventListener("click", () => tutorial.open());
+const changelog = initChangelog();
+$("verBtn").addEventListener("click", () => changelog.open());
+$("clBtn").addEventListener("click", () => changelog.open());
 
 // ---------------------------------------------------------------------------
 // Installierbare Web-App (PWA)

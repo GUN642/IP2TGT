@@ -1034,6 +1034,15 @@ dialog.map-dlg[open] {
     monospace;
   color: var(--accent);
   opacity: 0.8;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.brand .ver:hover {
+  opacity: 1;
 }
 
 /* ---------- Approach Plate ---------- */
@@ -1526,4 +1535,74 @@ dialog.tut-dlg[open] {
   .astro-cards {
     width: 100%;
   }
+}
+
+/* ---------- Changelog / Neuigkeiten ---------- */
+dialog.cl-dlg {
+  padding: 0;
+  background: #11161c;
+  width: min(620px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+}
+dialog.cl-dlg[open] {
+  display: flex;
+  flex-direction: column;
+}
+.cl-head,
+.cl-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 12px 20px;
+}
+.cl-head {
+  border-bottom: 1px solid var(--line);
+}
+.cl-foot {
+  border-top: 1px solid var(--line);
+}
+.cl-head .spacer,
+.cl-foot .spacer {
+  flex: 1;
+}
+.cl-title {
+  margin: 0;
+  font-size: 18px;
+}
+.cl-body {
+  overflow-y: auto;
+  padding: 6px 20px 14px;
+}
+.cl-entry h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 14px 0 6px;
+  font-size: 15px;
+}
+.cl-ver {
+  font:
+    700 12px "JetBrains Mono",
+    monospace;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.cl-date {
+  margin-left: auto;
+  font:
+    500 11px "JetBrains Mono",
+    monospace;
+  color: var(--muted);
+}
+.cl-entry ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.cl-entry li {
+  margin: 3px 0;
 }
