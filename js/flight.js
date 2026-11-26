@@ -2,7 +2,7 @@
 // Erzeugt eine vorab berechnete Trajektorie (zeitlich abgetastet), damit
 // Pause/Spulen jederzeit deterministisch funktioniert.
 
-import { direct } from "./geo.js?v=24";
+import { direct } from "./geo.js?v=25";
 
 export const PHASES = {
   LEADIN: "ANFLUG IP",

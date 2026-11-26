@@ -1,22 +1,22 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=24";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=24";
-import { getHelicopterDef } from "./models.js?v=24";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=24";
-import { VisualMode } from "./nvg.js?v=24";
-import { Hud } from "./hud.js?v=24";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=24";
-import { createCapture } from "./capture.js?v=24";
-import { initTutorial } from "./tutorial.js?v=24";
-import { initChangelog, APP_VERSION } from "./changelog.js?v=24";
-import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=24";
-import { loadObstacles, obstacleQuery } from "./obstacles.js?v=24";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=24";
-import { renderPlate } from "./plate.js?v=24";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=24";
-import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=24";
-import { SkyFx } from "./skyfx.js?v=24";
+import * as geo from "./geo.js?v=25";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=25";
+import { getHelicopterDef } from "./models.js?v=25";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=25";
+import { VisualMode } from "./nvg.js?v=25";
+import { Hud } from "./hud.js?v=25";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=25";
+import { createCapture } from "./capture.js?v=25";
+import { initTutorial } from "./tutorial.js?v=25";
+import { initChangelog, APP_VERSION } from "./changelog.js?v=25";
+import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=25";
+import { loadObstacles, obstacleQuery } from "./obstacles.js?v=25";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=25";
+import { renderPlate } from "./plate.js?v=25";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=25";
+import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=25";
+import { SkyFx } from "./skyfx.js?v=25";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -2436,24 +2436,27 @@ if ("serviceWorker" in navigator) {
       });
     })
     .catch((e) => console.warn("Service Worker:", e));
+  // Neuer Service Worker aktiv: nur neu laden, wenn am Server wirklich eine neuere Version liegt
+  // (die Seite selbst ist dank network-first meist schon aktuell)
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (hadController) reloadForUpdate();
+    if (hadController) checkVersion();
   });
 }
 // Neu geladen wird nur einmal pro Version (kein Endlos-Reload) und nicht mitten im Anflug
 function reloadForUpdate(version = "sw") {
   const key = "ip2tgt.reloadedFor";
+  if (document.getElementById("clDlg").open || document.getElementById("tutDlg").open || sim.traj || capture.recording) {
+    toast("Neue Version verfügbar – wird beim nächsten Neuladen der Seite aktiv.", false, 8000);
+    return false;
+  }
   try {
-    if (sessionStorage.getItem(key) === String(version)) return;
+    if (sessionStorage.getItem(key) === String(version)) return false;
     sessionStorage.setItem(key, String(version));
   } catch {
     /* blockiert */
   }
-  if (sim.traj || capture.recording) {
-    toast("Neue Version verfügbar – wird beim nächsten Neuladen der Seite aktiv.", false, 8000);
-    return;
-  }
   location.reload();
+  return true;
 }
 // Veröffentlichte Version am Server abfragen (am Browser-Cache vorbei)
 async function checkVersion() {
@@ -2461,12 +2464,12 @@ async function checkVersion() {
     const r = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
     if (!r.ok) return;
     const { version } = await r.json();
-    if (version > APP_VERSION) reloadForUpdate(version);
+    if (version > APP_VERSION) return reloadForUpdate(version);
   } catch {
     /* offline */
   }
 }
-checkVersion();
+const versionChecked = checkVersion();
 document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkVersion());
 let installEvt = null;
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -2512,6 +2515,9 @@ setMode("day");
   else camera.setView({ destination: Cesium.Cartesian3.fromDegrees(10.4, 51.1, 1200000) });
   // Modelle im Hintergrund vorbereiten
   ensureHeli(cfg.heli).catch((e) => console.error(e));
+  // Neuigkeiten erst, wenn alles geladen ist und kein Update-Neuladen ansteht
+  const reloading = await Promise.race([versionChecked, new Promise((r) => setTimeout(r, 4000))]);
+  if (!reloading) setTimeout(() => changelog.showNews(), 600);
 })();
 
 // Für Tests/Debugging

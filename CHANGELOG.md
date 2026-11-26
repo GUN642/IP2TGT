@@ -2,6 +2,11 @@
 
 Alle Änderungen an IP2TGT. Die App zeigt nach einem Update einmalig die Neuerungen an; der vollständige Changelog ist in der App über die Versionsnummer oben im Planungspanel oder „📋 Changelog“ erreichbar.
 
+## v25 – Neuigkeiten-Fenster bleibt offen (2026-11-26)
+
+- Das Neuigkeiten-Fenster bleibt offen, bis es manuell geschlossen wird – es wird nicht mehr durch das automatische Neuladen beim Update weggeklickt.
+- Erscheint erst, wenn die App fertig geladen ist; ein Update-Neuladen wartet, solange das Fenster offen ist.
+
 ## v24 – Updates kommen sofort an (2026-11-26)
 
 - Die App prüft beim Öffnen (und beim Zurückwechseln in den Tab), ob eine neue Version veröffentlicht ist, und lädt sie automatisch – kein veralteter Stand mehr aus dem Browser-Cache.

@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: 25,
+    date: "2026-11-26",
+    title: "Neuigkeiten-Fenster bleibt offen",
+    items: [
+      "Das Neuigkeiten-Fenster bleibt offen, bis es manuell geschlossen wird – es wird nicht mehr durch das automatische Neuladen beim Update weggeklickt.",
+      "Erscheint erst, wenn die App fertig geladen ist; ein Update-Neuladen wartet, solange das Fenster offen ist.",
+    ],
+  },
+  {
     version: 24,
     date: "2026-11-26",
     title: "Updates kommen sofort an",
@@ -177,9 +186,11 @@ export function initChangelog() {
     body.innerHTML = list.map(entryHtml).join("");
     allBtn.hidden = !news.length;
     body.scrollTop = 0;
-    set(SEEN_KEY, String(APP_VERSION));
     if (!dlg.open) dlg.showModal();
   }
+  // Erst beim manuellen Schließen als gelesen merken – wird die Seite vorher neu geladen,
+  // erscheint das Popup erneut.
+  dlg.addEventListener("close", () => set(SEEN_KEY, String(APP_VERSION)));
 
   allBtn.addEventListener("click", () => open());
   document.getElementById("clClose").addEventListener("click", () => dlg.close());
@@ -187,9 +198,18 @@ export function initChangelog() {
 
   const seen = parseInt(get(SEEN_KEY), 10);
   const known = !!get(TUT_KEY);
+  let pending = null;
   if (!known && !isFinite(seen)) set(SEEN_KEY, String(APP_VERSION)); // Erstbesuch: Tutorial statt Popup
-  else if (!isFinite(seen)) setTimeout(() => open(21), 900); // Nutzer, die vor v23 da waren: ab v22 zeigen
-  else if (seen < APP_VERSION) setTimeout(() => open(seen), 900);
+  else if (!isFinite(seen)) pending = 21; // Nutzer, die vor v23 da waren: ab v22 zeigen
+  else if (seen < APP_VERSION) pending = seen;
 
-  return { open: () => open() };
+  return {
+    open: () => open(),
+    /** Neuigkeiten zeigen – von der App aufgerufen, wenn der Start fertig ist */
+    showNews() {
+      if (pending == null || dlg.open) return;
+      open(pending);
+      pending = null;
+    },
+  };
 }

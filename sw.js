@@ -2,7 +2,7 @@
 // beim Server nachgefragt ("network first", HTTP-Cache wird umgangen), damit Updates sofort
 // ankommen; der Zwischenspeicher dient nur als Notfall ohne Netz.
 // Karten, Gelände und Bibliotheken anderer Server werden nicht angefasst.
-const CACHE = "ip2tgt-v24";
+const CACHE = "ip2tgt-v25";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
