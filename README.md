@@ -8,6 +8,7 @@ Web-App (reines HTML/JS, kein Build-Schritt) zur Simulation des Anflugs vom **In
 
 ## Funktionen
 
+- **Immer aktuell:** Beim Öffnen und beim Zurückwechseln in den Tab prüft die App `version.json` am Server (am Browser-Cache vorbei) und lädt eine neue Version automatisch; der Service Worker holt eigene Dateien immer frisch vom Server.
 - **Neuigkeiten & Changelog:** Nach jedem Update zeigt die App einmalig, was neu ist. Den vollständigen Verlauf gibt es in der App (Versionsnummer oben im Panel oder „📋 Changelog“) und in [CHANGELOG.md](CHANGELOG.md).
 
 - **Tutorial:** Beim ersten Öffnen führt ein bebildertes Tutorial (10 Schritte) durch die App; später jederzeit über **?** oben im Planungspanel, „📘 Tutorial / Anleitung öffnen“ unter *Daten & Darstellung* oder die Taste `?`.

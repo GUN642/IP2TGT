@@ -1,7 +1,7 @@
 // Sonne und Mond in der Szene: phasenrichtiger Mond, Blendung durch die Sonne (Tag),
 // Restlicht und automatische Helligkeitsregelung (Auto-Gain/ABC) der NVG beim Blick in den Mond.
 
-import { sunMoon } from "./astro.js?v=23";
+import { sunMoon } from "./astro.js?v=24";
 
 const Cesium = window.Cesium;
 const D2R = Math.PI / 180;

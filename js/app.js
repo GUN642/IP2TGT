@@ -1,22 +1,22 @@
 // IP2TGT – Hauptanwendung: UI, Szenen-Setup, Kameras, Simulationsschleife.
 
-import * as geo from "./geo.js?v=23";
-import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=23";
-import { getHelicopterDef } from "./models.js?v=23";
-import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=23";
-import { VisualMode } from "./nvg.js?v=23";
-import { Hud } from "./hud.js?v=23";
-import { mountCockpit, moveCockpit } from "./cockpit.js?v=23";
-import { createCapture } from "./capture.js?v=23";
-import { initTutorial } from "./tutorial.js?v=23";
-import { initChangelog } from "./changelog.js?v=23";
-import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=23";
-import { loadObstacles, obstacleQuery } from "./obstacles.js?v=23";
-import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=23";
-import { renderPlate } from "./plate.js?v=23";
-import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=23";
-import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=23";
-import { SkyFx } from "./skyfx.js?v=23";
+import * as geo from "./geo.js?v=24";
+import { TerrariumTerrainProvider, sampleTerrarium } from "./terrain.js?v=24";
+import { getHelicopterDef } from "./models.js?v=24";
+import { buildTrajectory, pathPoints, smoothGroundProfile, levelProfile } from "./flight.js?v=24";
+import { VisualMode } from "./nvg.js?v=24";
+import { Hud } from "./hud.js?v=24";
+import { mountCockpit, moveCockpit } from "./cockpit.js?v=24";
+import { createCapture } from "./capture.js?v=24";
+import { initTutorial } from "./tutorial.js?v=24";
+import { initChangelog, APP_VERSION } from "./changelog.js?v=24";
+import { loadOsmBuildings, obstacleHeights, overpassQuery, buildingQuery } from "./buildings.js?v=24";
+import { loadObstacles, obstacleQuery } from "./obstacles.js?v=24";
+import { openMapPicker, getCurrentPosition } from "./mappicker.js?v=24";
+import { renderPlate } from "./plate.js?v=24";
+import { bingTile, toCanvas, isBlankImage } from "./imagery.js?v=24";
+import { sunMoon, events as astroEvents, assess, LIGHT_LABEL, relText } from "./astro.js?v=24";
+import { SkyFx } from "./skyfx.js?v=24";
 
 const Cesium = window.Cesium;
 const { NM, FT, KT } = geo;
@@ -2424,8 +2424,50 @@ $("clBtn").addEventListener("click", () => changelog.open());
 // Installierbare Web-App (PWA)
 // ---------------------------------------------------------------------------
 
-if ("serviceWorker" in navigator)
-  navigator.serviceWorker.register("sw.js").catch((e) => console.warn("Service Worker:", e));
+// Updates: Service Worker immer frisch prüfen, neue Version sofort übernehmen
+if ("serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker
+    .register("sw.js", { updateViaCache: "none" })
+    .then((reg) => {
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reg.update().catch(() => {});
+      });
+    })
+    .catch((e) => console.warn("Service Worker:", e));
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController) reloadForUpdate();
+  });
+}
+// Neu geladen wird nur einmal pro Version (kein Endlos-Reload) und nicht mitten im Anflug
+function reloadForUpdate(version = "sw") {
+  const key = "ip2tgt.reloadedFor";
+  try {
+    if (sessionStorage.getItem(key) === String(version)) return;
+    sessionStorage.setItem(key, String(version));
+  } catch {
+    /* blockiert */
+  }
+  if (sim.traj || capture.recording) {
+    toast("Neue Version verfügbar – wird beim nächsten Neuladen der Seite aktiv.", false, 8000);
+    return;
+  }
+  location.reload();
+}
+// Veröffentlichte Version am Server abfragen (am Browser-Cache vorbei)
+async function checkVersion() {
+  try {
+    const r = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    if (version > APP_VERSION) reloadForUpdate(version);
+  } catch {
+    /* offline */
+  }
+}
+checkVersion();
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkVersion());
 let installEvt = null;
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();

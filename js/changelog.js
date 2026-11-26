@@ -3,6 +3,15 @@
 
 export const CHANGELOG = [
   {
+    version: 24,
+    date: "2026-11-26",
+    title: "Updates kommen sofort an",
+    items: [
+      "Die App prüft beim Öffnen (und beim Zurückwechseln in den Tab), ob eine neue Version veröffentlicht ist, und lädt sie automatisch – kein veralteter Stand mehr aus dem Browser-Cache.",
+      "Läuft gerade ein Anflug oder eine Videoaufnahme, wird nicht neu geladen, sondern nur ein Hinweis angezeigt.",
+    ],
+  },
+  {
     version: 23,
     date: "2026-11-26",
     title: "Neuigkeiten & Changelog",
@@ -179,7 +188,7 @@ export function initChangelog() {
   const seen = parseInt(get(SEEN_KEY), 10);
   const known = !!get(TUT_KEY);
   if (!known && !isFinite(seen)) set(SEEN_KEY, String(APP_VERSION)); // Erstbesuch: Tutorial statt Popup
-  else if (!isFinite(seen)) setTimeout(() => open(APP_VERSION - 2), 900); // vorhandene Nutzer vor v23
+  else if (!isFinite(seen)) setTimeout(() => open(21), 900); // Nutzer, die vor v23 da waren: ab v22 zeigen
   else if (seen < APP_VERSION) setTimeout(() => open(seen), 900);
 
   return { open: () => open() };

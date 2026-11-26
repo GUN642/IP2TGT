@@ -2,6 +2,11 @@
 
 Alle Änderungen an IP2TGT. Die App zeigt nach einem Update einmalig die Neuerungen an; der vollständige Changelog ist in der App über die Versionsnummer oben im Planungspanel oder „📋 Changelog“ erreichbar.
 
+## v24 – Updates kommen sofort an (2026-11-26)
+
+- Die App prüft beim Öffnen (und beim Zurückwechseln in den Tab), ob eine neue Version veröffentlicht ist, und lädt sie automatisch – kein veralteter Stand mehr aus dem Browser-Cache.
+- Läuft gerade ein Anflug oder eine Videoaufnahme, wird nicht neu geladen, sondern nur ein Hinweis angezeigt.
+
 ## v23 – Neuigkeiten & Changelog (2026-11-26)
 
 - Nach jedem Update erscheint einmalig ein Fenster mit den Neuerungen seit dem letzten Besuch.
